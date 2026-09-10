@@ -10,6 +10,9 @@ export type PigeonState =
   | 'FLY'
   | 'LAND'
   | 'HELD';
+
+// すべての状態は観察と交流のための非暴力的な行動です。
+// PANIC は人の接近や操作に対する一時的な驚きで、捕食・攻撃・負傷を表しません。
 export interface Vec3 {
   x: number;
   y: number;
