@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+.env*
+.claude/settings.local.json
+.codex/config.toml
+**/.claude/local/
+artifacts/
