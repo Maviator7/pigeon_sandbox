@@ -11,7 +11,7 @@ mono = scripting / 'MonoBleedingEdge/bin/mono'
 csc = scripting / 'MonoBleedingEdge/lib/mono/4.5/csc.exe'
 with tempfile.TemporaryDirectory(prefix='pigeon-checks-') as temporary:
     output = Path(temporary)
-    sources = sorted((project / 'Assets').rglob('*.cs'))
+    sources = sorted(p for p in (project / 'Assets').rglob('*.cs') if 'Editor' not in p.parts)
     references = sorted((scripting / 'Managed/UnityEngine').glob('*.dll'))
     references.append(scripting / 'MonoBleedingEdge/lib/mono/4.5/Facades/netstandard.dll')
     subprocess.run([str(mono), str(csc), '-nologo', '-target:library', '-out:' + str(output / 'PigeonSandbox.dll')]
@@ -22,3 +22,8 @@ with tempfile.TemporaryDirectory(prefix='pigeon-checks-') as temporary:
                     str(project / 'Assets/PigeonSandbox/Core/PigeonSimulation.cs'),
                     str(project / 'Tests/SimulationChecks.cs')], check=True)
     subprocess.run([str(mono), str(executable)], check=True)
+    town_executable = output / 'TownChecks.exe'
+    subprocess.run([str(mono), str(csc), '-nologo', '-out:' + str(town_executable),
+                    str(project / 'Assets/PigeonSandbox/Core/TownSimulation.cs'),
+                    str(project / 'Tests/TownChecks.cs')], check=True)
+    subprocess.run([str(mono), str(town_executable)], check=True)

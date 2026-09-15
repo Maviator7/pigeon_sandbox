@@ -19,6 +19,13 @@ namespace PigeonSandbox.Editor
         [MenuItem("Pigeon Sandbox/Verify simulation")]
         public static void Verify()
         {
+            var town=new TownSimulation(9);
+            Assert(town.Build(FacilityKind.Bakery,1,0),"Town build");
+            for(int i=0;i<1500;i++) town.Tick(1f/60);
+            Assert(town.Purchases>0 && town.Income>0,"Town visitor economy");
+            Assert(town.Move(town.At(1,0).Id,3,3),"Town free relocation");
+            town.TogglePolicy(TownPolicy.NestBoxes);
+            Assert(town.NestBoxes,"Town policy");
             var p=new PigeonSimulation(new System.Random(42).NextDouble);
             p.AddFood(2,1);
             for(int i=0;i<600 && p.Eaten==0;i++) p.Tick(1f/60);

@@ -10,6 +10,26 @@ namespace PigeonSandbox
         private Material seedMaterial;
         private bool initialized;
 
+        public void InitializeBirdOnly(bool white, bool mayor)
+        {
+            if (initialized) return;
+            initialized = true;
+            CreateBird();
+            if (white)
+                foreach (var renderer in Bird.GetComponentsInChildren<Renderer>())
+                    if (renderer.sharedMaterial.name.Contains("grey") || renderer.sharedMaterial.name.Contains("Slate"))
+                    {
+                        var material = new Material(renderer.sharedMaterial);
+                        material.color = new Color(.94f,.91f,.83f);
+                        renderer.sharedMaterial = material;
+                    }
+            if (mayor)
+            {
+                var gold = Material("Mayor gold", "D4AA50");
+                Shape("Mayor medallion", PrimitiveType.Sphere, Bird, new Vector3(0,1.12f,.53f), new Vector3(.16f,.18f,.045f), gold);
+            }
+        }
+
         public void Initialize()
         {
             if (initialized) return;
