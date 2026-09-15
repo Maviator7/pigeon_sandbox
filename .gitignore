@@ -7,3 +7,9 @@ dist/
 .codex/config.toml
 **/.claude/local/
 artifacts/
+unity/**/Library/
+unity/**/Temp/
+unity/**/Obj/
+unity/**/Logs/
+unity/**/UserSettings/
+unity/**/Builds/
