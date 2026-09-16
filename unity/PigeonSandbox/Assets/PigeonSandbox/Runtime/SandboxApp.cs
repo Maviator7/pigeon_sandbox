@@ -17,8 +17,28 @@ namespace PigeonSandbox
   float Scale=>Mathf.Min(Screen.width/1440f,Screen.height/900f);
   float Width=>Screen.width/Scale; float Height=>Screen.height/Scale;
   string SavePath=>Path.Combine(Application.persistentDataPath,"mayor-town.json");
-  readonly Color ink=new Color(.19f,.27f,.23f),green=new Color(.27f,.41f,.33f),paper=new Color(.96f,.95f,.9f);
+  readonly Color ink=new Color(.12f,.2f,.16f),muted=new Color(.22f,.29f,.24f),green=new Color(.27f,.41f,.33f),paper=new Color(.96f,.95f,.9f);
   static readonly string[] Tips={"広場から2マス以内で混雑を軽減。噴水を添えると鳩の生活圏に。","パン屋の2マス以内で食事と水浴びを楽しめる場所に。","木や噴水が近く、店舗から離れた場所なら静かな寝床に。","住宅のそばで静かな緑地に。清掃の負担もやわらげます。","パン屋に近づけると混雑をやわらげ、人と鳩の居場所を確保。","観光と目立ちたがりの鳩のための名所。静かな住宅からは距離を。"};
+  struct UiLayout
+  {
+   public float gap,headerH,bottomH,leftW,rightW;
+   public Rect left,right,center,bottom;
+  }
+  UiLayout Layout(float w,float h)
+  {
+   float gap=Mathf.Clamp(w*.012f,14,20), headerH=Mathf.Clamp(h*.12f,104,116), bottomH=192;
+   float leftW=Mathf.Clamp(w*.18f,248,276), rightW=Mathf.Clamp(w*.205f,286,320);
+   float centerX=leftW+gap, centerY=headerH+gap;
+   float centerW=Mathf.Max(480,w-leftW-rightW-gap*2), centerH=Mathf.Max(260,h-headerH-bottomH-gap*2);
+   return new UiLayout
+   {
+    gap=gap,headerH=headerH,bottomH=bottomH,leftW=leftW,rightW=rightW,
+    left=new Rect(0,headerH,leftW,h-headerH),
+    right=new Rect(w-rightW,headerH,rightW,h-headerH),
+    center=new Rect(centerX,centerY,centerW,centerH),
+    bottom=new Rect(centerX,h-bottomH,centerW,bottomH)
+   };
+  }
   void Start()
   {
    Application.targetFrameRate=60; font=Resources.Load<Font>("NotoSansJP"); town=new TownSimulation(); Load();
@@ -33,11 +53,11 @@ namespace PigeonSandbox
   }
   void CameraPosition()
   {
-   view.rect=new Rect(242f/Width,142f/Height,(Width-532f)/Width,(Height-254f)/Height);
+   var l=Layout(Width,Height); view.rect=new Rect(l.center.x/Width,(Height-l.center.y-l.center.height)/Height,l.center.width/Width,l.center.height/Height);
    var focus=new Vector3(0,.3f,0); view.transform.position=focus+Quaternion.Euler(pitch,yaw,0)*new Vector3(0,0,-35);
    view.transform.LookAt(focus); view.orthographicSize=zoom;
   }
-  bool InTown(Vector2 point) { var p=point/Scale; p.y=Height-p.y; return p.x>242&&p.x<Width-290&&p.y>142&&p.y<Height-112; }
+  bool InTown(Vector2 point) { var p=point/Scale; p.y=Height-p.y; return Layout(Width,Height).center.Contains(p); }
   bool GridPoint(Vector2 point,out int x,out int z)
   {
    x=z=0; if(!InTown(point)) return false; var ray=view.ScreenPointToRay(point);
@@ -92,88 +112,157 @@ namespace PigeonSandbox
   void Styles()
   {
    if(text!=null) return;
-   text=new GUIStyle(GUI.skin.label){font=font,fontSize=16,wordWrap=true}; text.normal.textColor=ink;
-   small=new GUIStyle(text){fontSize=13}; heading=new GUIStyle(text){fontSize=21,fontStyle=FontStyle.Bold}; title=new GUIStyle(heading){fontSize=30};
-   button=new GUIStyle(text){alignment=TextAnchor.MiddleCenter,fontSize=15,wordWrap=true};
+   text=new GUIStyle(GUI.skin.label){font=font,fontSize=17,wordWrap=true}; text.normal.textColor=ink;
+   small=new GUIStyle(text){fontSize=15,fontStyle=FontStyle.Normal}; small.normal.textColor=muted;
+   heading=new GUIStyle(text){fontSize=22,fontStyle=FontStyle.Bold}; heading.normal.textColor=ink;
+   title=new GUIStyle(heading){fontSize=30};
+   button=new GUIStyle(text){alignment=TextAnchor.MiddleCenter,fontSize=15,fontStyle=FontStyle.Bold,wordWrap=true,padding=new RectOffset(8,8,6,6)};
   }
   void Panel(Rect r,Color c) { GUI.color=c; GUI.DrawTexture(r,Texture2D.whiteTexture); GUI.color=Color.white; }
-  void Label(float x,float y,float w,float h,string value,GUIStyle style=null) { GUI.Label(new Rect(x,y,w,h),value,style??text); }
+  void Label(float x,float y,float w,float h,string value,GUIStyle style=null)
+  {
+   style=style??text;
+   GUI.Label(new Rect(x,y,w,Mathf.Max(h,TextHeight(value,w,style))),value,style);
+  }
+  float TextHeight(string value,float width,GUIStyle style) => Mathf.Ceil(style.CalcHeight(new GUIContent(value),width))+6;
+  float FlowLabel(float x,float y,float width,string value,GUIStyle style,bool draw=true)
+  {
+   float height=TextHeight(value,width,style);
+   if(draw) Label(x,y,width,height,value,style);
+   return y+height+8;
+  }
   bool Button(Rect r,string value,bool active=false,bool enabled=true)
   {
    Panel(r,active?green:enabled?new Color(.89f,.89f,.82f):new Color(.92f,.92f,.87f));
    button.normal.textColor=active?Color.white:enabled?ink:new Color(.6f,.62f,.56f); bool hit=GUI.Button(r,value,button); button.normal.textColor=ink; return hit&&enabled;
   }
-  void Meter(float x,float y,float w,string name,float value)
+  float Meter(float x,float y,float w,string name,float value)
   {
-   Label(x,y,w,24,name+"  "+Mathf.RoundToInt(value),small); Panel(new Rect(x,y+27,w,5),new Color(.84f,.85f,.77f)); Panel(new Rect(x,y+27,w*Mathf.Clamp01(value/100),5),green);
+   float barY=FlowLabel(x,y,w,name+"  "+Mathf.RoundToInt(value),small);
+   Panel(new Rect(x,barY,w,5),new Color(.84f,.85f,.77f)); Panel(new Rect(x,barY,w*Mathf.Clamp01(value/100),5),green);
+   return barY+13;
   }
   void OnGUI()
   {
-   if(town==null) return; Styles(); float w=Width,h=Height; GUI.matrix=Matrix4x4.Scale(new Vector3(Scale,Scale,1));
-   Panel(new Rect(0,0,w,112),paper); Panel(new Rect(0,112,242,h-112),paper); Panel(new Rect(w-290,112,290,h-112),paper); Panel(new Rect(242,h-142,w-532,142),paper);
-   Label(24,14,310,43,"鳩が市長のまち",title); Label(26,65,310,25,"PIGEON MAYOR  /  駅前広場",small);
-   Label(355,17,235,30,"街の予算  ¥"+town.Money.ToString("0"),heading);
-   Label(355,57,245,30,"今期収入 ¥"+town.Income.ToString("0")+"  維持費 ¥"+town.Upkeep.ToString("0")+" / 20秒",small);
+   if(town==null) return; Styles(); float w=Width,h=Height; var l=Layout(w,h); GUI.matrix=Matrix4x4.Scale(new Vector3(Scale,Scale,1));
+   Panel(new Rect(0,0,w,l.headerH),paper); Panel(l.left,paper); Panel(l.right,paper); Panel(l.bottom,paper);
+   Panel(new Rect(l.left.width,l.headerH,l.center.x-l.left.width,h-l.headerH),paper);
+   Panel(new Rect(l.center.x+l.center.width,l.headerH,w-(l.center.x+l.center.width),h-l.headerH),paper);
+   Panel(new Rect(l.center.x,l.headerH,l.center.width,l.center.y-l.headerH),paper);
+   Panel(new Rect(l.center.x,l.center.y+l.center.height,l.center.width,l.bottom.y-(l.center.y+l.center.height)),paper);
+   float titleBottom=FlowLabel(24,10,310,"鳩市長の街づくり",title);
+   FlowLabel(24,titleBottom,310,"鳩と人が暮らす駅前広場",small);
+   float moneyBottom=FlowLabel(355,14,245,"街の予算  ¥"+town.Money.ToString("0"),heading);
+   FlowLabel(355,moneyBottom,245,"今期収入 ¥"+town.Income.ToString("0")+"  維持費 ¥"+town.Upkeep.ToString("0")+" / 20秒",small);
    Meter(615,23,140,"鳩の幸福",town.PigeonHappiness); Meter(785,23,140,"人の満足",town.HumanSatisfaction);
-   Label(965,20,210,25,"住民 "+town.Birds.Count+"羽 / 来訪 "+town.Visitors.Count+"人",text); Label(965,58,190,24,"DAY "+town.Day+" · 購買 "+town.Purchases+"回",small);
-   if(Button(new Rect(w-210,25,78,45),speed==0?"再開":"一時停止",speed==0)) speed=speed==0?1:0;
-   if(Button(new Rect(w-122,25,94,45),"速度 ×"+(speed==0?1:speed))) speed=speed>=3?1:3;
-   LeftPanel(h); RightPanel(w,h); BottomPanel(w,h);
+   float residentX=Mathf.Min(965,w-470);
+   float residentBottom=FlowLabel(residentX,18,210,"住民 "+town.Birds.Count+"羽 / 来訪 "+town.Visitors.Count+"人",text);
+   FlowLabel(residentX,residentBottom,210,"DAY "+town.Day+" · 購買 "+town.Purchases+"回",small);
+   float speedW=104,pauseW=94,controlGap=10,speedX=w-24-speedW,pauseX=speedX-controlGap-pauseW;
+   if(Button(new Rect(pauseX,25,pauseW,45),speed==0?"再開":"一時停止",speed==0)) speed=speed==0?1:0;
+   if(Button(new Rect(speedX,25,speedW,45),"速度 ×"+(speed==0?1:speed))) speed=speed>=3?1:3;
+   LeftPanel(l); RightPanel(l); BottomPanel(l);
   }
-  void LeftPanel(float h)
+  void LeftPanel(UiLayout l)
   {
-   Label(22,130,200,30,"街をつくる",heading); Label(22,168,205,42,"ひとつの施設に、\n人と鳩ふたつの価値。",small);
-   string[] uses={"食べ物・買い物","水浴び・景観","寝床・税収","休息・清潔さ","社交・混雑対策","特等席・観光"};
+   Rect r=l.left; float x=r.x+16,w=r.width-32;
+   float introY=FlowLabel(x,r.y+18,w,"街をつくる",heading);
+   float introBottom=FlowLabel(x,introY,w,"施設を選んで、中央の街に配置",small);
+   string[] uses={"食料","水浴び","寝床","休憩","交流","観光"};
+   float gridY=introBottom+16,gap=8,bw=(w-gap)/2,bh=58;
    for(int i=0;i<6;i++)
    {
-    var kind=(FacilityKind)i;
-    if(Button(new Rect(18,222+i*70,204,61),TownSimulation.NameOf(kind)+"   ¥"+TownSimulation.Cost(kind)+"\n"+uses[i],tool==Tool.Build&&building==kind)) { building=kind; tool=Tool.Build; selected=-1; message=Tips[i]; }
+    string caption=TownSimulation.NameOf((FacilityKind)i)+"\n¥"+TownSimulation.Cost((FacilityKind)i)+"\n"+uses[i];
+    bh=Mathf.Max(bh,TextHeight(caption,bw,button));
    }
-   if(Button(new Rect(18,656,204,39),"観察 / 施設を選ぶ",tool==Tool.Inspect)) tool=Tool.Inspect;
-   Label(22,710,200,70,"クリック：建設 / 選択\n右ドラッグ：視点回転\nスクロール：ズーム",small);
-   if(Button(new Rect(18,h-64,204,40),"街を保存")) Save(true);
+   for(int i=0;i<6;i++)
+   {
+    var kind=(FacilityKind)i; int col=i%2,row=i/2;
+    Rect buttonRect=new Rect(x+col*(bw+gap),gridY+row*(bh+gap),bw,bh);
+    if(Button(buttonRect,TownSimulation.NameOf(kind)+"\n¥"+TownSimulation.Cost(kind)+"\n"+uses[i],tool==Tool.Build&&building==kind)) { building=kind; tool=Tool.Build; selected=-1; message=Tips[i]; }
+   }
+   float inspectY=gridY+3*(bh+gap)+12;
+   if(Button(new Rect(x,inspectY,w,40),"観察 / 施設を選ぶ",tool==Tool.Inspect)) tool=Tool.Inspect;
+   FlowLabel(x,inspectY+52,w,"左クリック：建設・選択\n右ドラッグ：視点回転\nホイール：ズーム",small);
+   if(Button(new Rect(x,r.y+r.height-58,w,40),"街を保存")) Save(true);
   }
-  void RightPanel(float w,float h)
+  void RightPanel(UiLayout l)
   {
-   float x=w-272; Meter(x,130,116,"食料供給",town.FoodSupply); Meter(x+132,130,116,"清潔さ",town.Cleanliness);
-   Label(x,176,245,32,"混雑 "+town.Crowding.ToString("0")+" · 木と広場でゆとりを",small);
-   string[] tabs={"お願い","鳩図鑑","条例"}; for(int i=0;i<3;i++) if(Button(new Rect(x+i*84,217,78,38),tabs[i],tab==i)) { tab=i; scroll=Vector2.zero; }
-   float content=tab==1?Mathf.Max(550,town.Birds.Count*83+170):610;
-   scroll=GUI.BeginScrollView(new Rect(x,272,254,h-300),scroll,new Rect(0,0,233,content));
+   Rect r=l.right; float x=r.x+16,innerW=r.width-32;
+   float meterGap=10,meterW=(innerW-meterGap)/2;
+   float foodBottom=Meter(x,r.y+18,meterW,"食料供給",town.FoodSupply);
+   float cleanBottom=Meter(x+meterW+meterGap,r.y+18,meterW,"清潔さ",town.Cleanliness);
+   float tabsTop=FlowLabel(x,Mathf.Max(foodBottom,cleanBottom)+8,innerW,"混雑 "+town.Crowding.ToString("0")+" · 木と広場でゆとりを",small);
+   string[] tabs={"お願い","鳩図鑑","条例"}; float tabGap=6,tabW=(innerW-tabGap*2)/3,tabY=tabsTop+8;
+   for(int i=0;i<3;i++) if(Button(new Rect(x+i*(tabW+tabGap),tabY,tabW,38),tabs[i],tab==i)) { tab=i; scroll=Vector2.zero; }
+   float scrollY=tabY+50,scrollH=r.y+r.height-scrollY-16;
+   float contentW=innerW-GUI.skin.verticalScrollbar.fixedWidth-12;
+   float content=RightContent(contentW,false);
+   scroll=GUI.BeginScrollView(new Rect(x,scrollY,innerW,scrollH),scroll,new Rect(0,0,contentW,content),false,true);
+   RightContent(contentW,true);
+   GUI.EndScrollView();
+  }
+  float RightContent(float width,bool draw)
+  {
+   float y=0;
    if(tab==0)
    {
-    Label(0,0,230,32,"住民からのおたより",heading);
-    for(int i=0;i<town.Requests.Count;i++) { var r=town.Requests[i]; float y=52+i*145; Label(0,y,228,32,(r.Complete?"✓ ":"0"+(i+1)+"  ")+r.Title,heading); Label(0,y+39,226,64,r.Description); Label(0,y+108,228,25,r.Complete?"達成済み · お礼を受け取りました":"お礼 ¥"+r.Reward,small); }
-    Label(0,510,230,85,"鳩を追い払う必要はありません。居場所と人の通路を、配置で整えましょう。",small);
+    y=FlowLabel(0,y,width,"住民からのおたより",heading,draw)+12;
+    for(int i=0;i<town.Requests.Count;i++)
+    {
+     var request=town.Requests[i];
+     y=FlowLabel(0,y,width,(request.Complete?"✓ ":"0"+(i+1)+"  ")+request.Title,heading,draw);
+     y=FlowLabel(0,y,width,request.Description,small,draw);
+     y=FlowLabel(0,y,width,request.Complete?"達成済み · お礼を受け取りました":"お礼 ¥"+request.Reward,small,draw)+20;
+    }
+    y=FlowLabel(0,y,width,"鳩を追い払う必要はありません。居場所と人の通路を、配置で整えましょう。",small,draw);
    }
    else if(tab==1)
    {
-    Label(0,0,230,32,"この街の住民たち",heading); int i=0;
-    foreach(var b in town.Birds) { float y=48+i++*83; Label(0,y,229,29,(b.Mayor?"市長 ":b.Rare?"白い羽 ":"")+b.Name,heading); Label(0,y+33,230,40,TownSimulation.PersonalityName(b.Personality)+" · "+b.Action,small); }
-    Label(0,55+i*83,230,100,"白い鳩のうわさ\n"+town.RareHint,small);
+    y=FlowLabel(0,y,width,"この街の住民たち",heading,draw)+12;
+    foreach(var b in town.Birds)
+    {
+     y=FlowLabel(0,y,width,(b.Mayor?"市長 ":b.Rare?"白い羽 ":"")+b.Name,heading,draw);
+     y=FlowLabel(0,y,width,TownSimulation.PersonalityName(b.Personality)+" · "+b.Action,small,draw)+16;
+    }
+    y=FlowLabel(0,y,width,"白い鳩のうわさ\n"+town.RareHint,small,draw);
    }
    else
    {
-    Label(0,0,230,32,"市長のひと声",heading);
+    y=FlowLabel(0,y,width,"市長のひと声",heading,draw)+12;
     string[] names={"公共施設に巣箱","水浴び優先区域","オープンカフェ支援"};
     string[] notes={"寝床が増え、鳩が安心。維持費が増えます。","水浴びが充実。人間のイベント空間は少し減少。","食料供給と商業を支援。清掃需要と維持費が増加。"};
     bool[] on={town.NestBoxes,town.BathPriority,town.CafeSupport};
-    for(int i=0;i<3;i++) { float y=52+i*155; if(Button(new Rect(0,y,230,48),names[i]+(on[i]?" ON":" OFF"),on[i])) town.TogglePolicy((TownPolicy)i); Label(0,y+59,228,75,notes[i],small); }
+    for(int i=0;i<3;i++)
+    {
+     string caption=names[i]+(on[i]?" ON":" OFF");
+     float height=Mathf.Max(48,TextHeight(caption,width,button));
+     if(draw&&Button(new Rect(0,y,width,height),caption,on[i])) town.TogglePolicy((TownPolicy)i);
+     y+=height+10;
+     y=FlowLabel(0,y,width,notes[i],small,draw)+24;
+    }
    }
-   GUI.EndScrollView();
+   return y+16;
   }
-  void BottomPanel(float w,float h)
+  void BottomPanel(UiLayout l)
   {
-   float x=262,width=w-574; var f=town.Facilities.Find(a=>a.Id==selected);
+   Rect r=l.bottom; float x=r.x+18,width=r.width-36; var f=town.Facilities.Find(a=>a.Id==selected);
    if(f!=null&&tool!=Tool.Build)
    {
-    Label(x,h-132,width,30,TownSimulation.NameOf(f.Kind)+" Lv."+f.Level+" / "+f.X+", "+f.Z,heading); Label(x,h-98,width,40,tool==Tool.Move?"空き地をクリックして移設。費用はかかりません。":Tips[(int)f.Kind],small);
-    if(Button(new Rect(x,h-50,118,34),"移設 ¥0",tool==Tool.Move)) tool=Tool.Move;
+    float y=FlowLabel(x,r.y+10,width,TownSimulation.NameOf(f.Kind)+" Lv."+f.Level+" / "+f.X+", "+f.Z,heading);
+    FlowLabel(x,y,width,tool==Tool.Move?"空き地をクリックして移設。費用はかかりません。":Tips[(int)f.Kind],small);
+    float by=r.yMax-58;
+    if(Button(new Rect(x,by,110,44),"移設 ¥0",tool==Tool.Move)) tool=Tool.Move;
     int cost=TownSimulation.Cost(f.Kind)*f.Level/2;
-    if(Button(new Rect(x+127,h-50,143,34),f.Level>=3?"改良済み":"改良 ¥"+cost,false,f.Level<3&&town.Money>=cost)) town.Upgrade(f.Id);
-    if(Button(new Rect(x+279,h-50,160,34),"撤去 / 70%返金")) { town.Remove(f.Id); selected=-1; tool=Tool.Inspect; }
+    if(Button(new Rect(x+120,by,132,44),f.Level>=3?"改良済み":"改良 ¥"+cost,false,f.Level<3&&town.Money>=cost)) town.Upgrade(f.Id);
+    if(Button(new Rect(x+width-150,by,150,44),"撤去 / 70%返金")) { town.Remove(f.Id); selected=-1; tool=Tool.Inspect; }
    }
-   else { Label(x,h-132,width,30,tool==Tool.Build?TownSimulation.NameOf(building)+"を建てる":"市長の観察ノート",heading); Label(x,h-96,width,42,message,small); Label(x,h-43,width,30,town.Notice,small); }
+   else
+   {
+    float y=FlowLabel(x,r.y+10,width,tool==Tool.Build?TownSimulation.NameOf(building)+"を建てる":"市長の観察ノート",heading);
+    y=FlowLabel(x,y,width,message,small);
+    FlowLabel(x,y,width,town.Notice,small);
+   }
   }
  }
 }
