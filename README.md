@@ -98,6 +98,10 @@ docs/model-guide.md           モデル差し替えガイド
 現時点では無音です。音ボタンはSoundManagerの有効状態を切り替えます。
 `SoundManager.register('coo', '/audio/coo.mp3')` のように登録できます。`coo`, `flap`, `peck`, `step` を想定しています。足音の歩行周期や羽ばたき周期など、詳細な音タイミングは素材追加時にイベントを拡張してください。
 
+## Unity版（Mac）
+
+Web版と並行するUnityプロジェクトを `unity/PigeonSandbox` に追加しました。開き方とMacビルド手順は [Unity版README](unity/PigeonSandbox/README.md) を参照してください。C#コンパイル・AIテスト・Macビルド・実アプリ起動を確認済みです。
+
 ## パフォーマンスと拡張
 
 毎フレームの位置・姿勢をRuntimeとThreeオブジェクトに保持し、ReactのStateを更新しません。UIは5Hz。草はInstancedMesh、DPR上限は1.75、影は2048px。60fpsを目標とした設計ですが、全端末での60fpsや30羽での性能を保証するものではありません。

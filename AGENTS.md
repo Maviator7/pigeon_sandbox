@@ -8,6 +8,9 @@
 - npm run dev
 - npm run build
 - npm test
+- Unity版: `unity/PigeonSandbox` をUnity 6000.3.11f1で開く。初回にParkシーンを生成。
+- Unity版ビルド: Editorメニュー `Pigeon Sandbox > Build Mac app`。
+- Unity版C#検証: `python3 unity/PigeonSandbox/Tests/verify.py`（Unityライセンス不要）。
 
 ## 構成と規約
 
@@ -19,3 +22,6 @@
 - モデル・音素材がなくても動作を維持する。
 - 個人プロジェクト。エージェント定義はホーム側を使用する。
 - コマンドや構成が変わったらこのファイルも更新する。
+- unity/PigeonSandbox/Assets/PigeonSandbox/Core: Unity非依存のC# AI。乱数は注入する。
+- unity/PigeonSandbox/Assets/PigeonSandbox/Runtime: 鳩モデル、公園、入力、観察UI。
+- 鳩を観察し、個体差や行動を楽しむ平和なシミュレーター。鳩に危害を加えるイベントは実装しない。
