@@ -12,7 +12,11 @@ namespace PigeonSandbox
   FacilityKind building=FacilityKind.Bakery;
   enum Tool { Inspect,Build,Move }
   Tool tool=Tool.Build;
-  Vector2 pointerStart,scroll;
+  Vector2 pointerStart,scroll,lastPointer;
+  Vector3 cameraFocus=new Vector3(0,.3f,0);
+  int followedBird=-1;
+  float targetZoom=14;
+  bool pointerInTown,dragged,multiTouch;
   string message="広場のそばにベーカリーを建ててみましょう。";
   float Scale=>Mathf.Min(Screen.width/1440f,Screen.height/900f);
   float Width=>Screen.width/Scale; float Height=>Screen.height/Scale;
@@ -54,10 +58,84 @@ namespace PigeonSandbox
   void CameraPosition()
   {
    var l=Layout(Width,Height); view.rect=new Rect(l.center.x/Width,(Height-l.center.y-l.center.height)/Height,l.center.width/Width,l.center.height/Height);
-   var focus=new Vector3(0,.3f,0); view.transform.position=focus+Quaternion.Euler(pitch,yaw,0)*new Vector3(0,0,-35);
+   var focus=cameraFocus; view.transform.position=focus+Quaternion.Euler(pitch,yaw,0)*new Vector3(0,0,-35);
    view.transform.LookAt(focus); view.orthographicSize=zoom;
   }
-  bool InTown(Vector2 point) { var p=point/Scale; p.y=Height-p.y; return Layout(Width,Height).center.Contains(p); }
+  Rect CameraToolbar() { var r=Layout(Width,Height).center; return new Rect(r.x+10,r.y+10,r.width-20,48); }
+  bool InTown(Vector2 point) { var p=point/Scale; p.y=Height-p.y; return Layout(Width,Height).center.Contains(p)&&!CameraToolbar().Contains(p); }
+  void FocusBird(int id)
+  {
+   followedBird=id; targetZoom=4; tool=Tool.Inspect; selected=-1;
+  }
+  void ResetCamera() { followedBird=-1; cameraFocus=new Vector3(0,.3f,0); targetZoom=14; yaw=35; pitch=48; }
+  void PanCamera(Vector2 from,Vector2 to)
+  {
+   var plane=new Plane(Vector3.up,new Vector3(0,cameraFocus.y,0));
+   var a=view.ScreenPointToRay(from); var b=view.ScreenPointToRay(to);
+   if(!plane.Raycast(a,out float da)||!plane.Raycast(b,out float db)) return;
+   followedBird=-1; cameraFocus+=a.GetPoint(da)-b.GetPoint(db);
+   cameraFocus.x=Mathf.Clamp(cameraFocus.x,-14,14); cameraFocus.z=Mathf.Clamp(cameraFocus.z,-14,14);
+  }
+  void CameraInput()
+  {
+   if(Input.touchCount>0)
+   {
+    var t=Input.GetTouch(0);
+    if(t.phase==TouchPhase.Began) { pointerStart=lastPointer=t.position; pointerInTown=InTown(t.position); dragged=false; if(Input.touchCount==1) multiTouch=false; }
+    if(Input.touchCount>=2)
+    {
+     multiTouch=true; dragged=true;
+     var b=Input.GetTouch(1);
+     if(pointerInTown&&InTown(b.position)&&(t.phase==TouchPhase.Moved||b.phase==TouchPhase.Moved)&&b.phase!=TouchPhase.Began)
+     {
+      var oldA=t.position-t.deltaPosition; var oldB=b.position-b.deltaPosition;
+      targetZoom=Mathf.Clamp(targetZoom+(Vector2.Distance(oldA,oldB)-Vector2.Distance(t.position,b.position))*.015f,3,22);
+      PanCamera((oldA+oldB)*.5f,(t.position+b.position)*.5f);
+     }
+    }
+    else if(pointerInTown&&!multiTouch)
+    {
+     if(Vector2.Distance(pointerStart,t.position)>7*Scale) dragged=true;
+     if(dragged&&t.phase==TouchPhase.Moved) PanCamera(lastPointer,t.position);
+     if(t.phase==TouchPhase.Ended&&!dragged) ClickTown(t.position);
+    }
+    lastPointer=t.position;
+    if(t.phase==TouchPhase.Canceled||t.phase==TouchPhase.Ended) pointerInTown=false;
+    return;
+   }
+   Vector2 mouse=Input.mousePosition;
+   if(Input.GetMouseButtonDown(0)) { pointerStart=lastPointer=mouse; pointerInTown=InTown(mouse); dragged=false; }
+   if(Input.GetMouseButton(0)&&pointerInTown)
+   {
+    if(Vector2.Distance(pointerStart,mouse)>7*Scale) dragged=true;
+    if(dragged) PanCamera(lastPointer,mouse);
+   }
+   if(Input.GetMouseButtonUp(0)) { dragged|=Vector2.Distance(pointerStart,mouse)>7*Scale; if(pointerInTown&&!dragged&&InTown(mouse)) ClickTown(mouse); pointerInTown=false; dragged=false; }
+   if(InTown(mouse))
+   {
+    if(Input.GetMouseButton(1)) { yaw+=Input.GetAxis("Mouse X")*3; pitch=Mathf.Clamp(pitch-Input.GetAxis("Mouse Y")*2,30,75); }
+    targetZoom=Mathf.Clamp(targetZoom-Input.mouseScrollDelta.y*.55f,3,22);
+   }
+   lastPointer=mouse;
+  }
+  void UpdateCamera()
+  {
+   float blend=1-Mathf.Exp(-8*UnityEngine.Time.unscaledDeltaTime);
+   var bird=town.Birds.Find(b=>b.Id==followedBird);
+   if(bird!=null) cameraFocus=Vector3.Lerp(cameraFocus,new Vector3(bird.X,bird.Y+.4f,bird.Z),blend);
+   else followedBird=-1;
+   zoom=Mathf.Lerp(zoom,targetZoom,blend); CameraPosition();
+  }
+  void CameraControls()
+  {
+   Rect r=CameraToolbar(); Panel(r,paper); float x=r.x+4,y=r.y+2;
+   if(Button(new Rect(x,y,44,44),"＋")) targetZoom=Mathf.Max(3,targetZoom-2);
+   if(Button(new Rect(x+50,y,44,44),"−")) targetZoom=Mathf.Min(22,targetZoom+2);
+   if(Button(new Rect(x+100,y,96,44),"街全体")) ResetCamera();
+   var bird=town.Birds.Find(b=>b.Id==followedBird);
+   string caption=bird==null?"ドラッグで移動":bird.Name+"を追従中";
+   GUI.Label(new Rect(x+208,y+9,r.width-220,34),caption,small);
+  }
   bool GridPoint(Vector2 point,out int x,out int z)
   {
    x=z=0; if(!InTown(point)) return false; var ray=view.ScreenPointToRay(point);
@@ -80,20 +158,9 @@ namespace PigeonSandbox
   {
    if(Input.GetKeyDown(KeyCode.Space)) speed=speed==0?1:0;
    if(Input.GetKeyDown(KeyCode.Escape)) { tool=Tool.Inspect; selected=-1; }
-   if(Input.touchCount>0)
-   {
-    var t=Input.GetTouch(0); if(t.phase==TouchPhase.Began) pointerStart=t.position;
-    if(Input.touchCount==1&&t.phase==TouchPhase.Ended&&Vector2.Distance(pointerStart,t.position)<12) ClickTown(t.position);
-    if(Input.touchCount==2) { var b=Input.GetTouch(1); zoom=Mathf.Clamp(zoom+(Vector2.Distance(t.position-t.deltaPosition,b.position-b.deltaPosition)-Vector2.Distance(t.position,b.position))*.025f,7,20); yaw+=t.deltaPosition.x*.18f; }
-   }
-   else
-   {
-    if(Input.GetMouseButtonDown(0)) pointerStart=Input.mousePosition;
-    if(Input.GetMouseButtonUp(0)&&Vector2.Distance(pointerStart,Input.mousePosition)<7) ClickTown(Input.mousePosition);
-    if(InTown(Input.mousePosition)) { if(Input.GetMouseButton(1)) { yaw+=Input.GetAxis("Mouse X")*3; pitch=Mathf.Clamp(pitch-Input.GetAxis("Mouse Y")*2,30,75); } zoom=Mathf.Clamp(zoom-Input.mouseScrollDelta.y*.55f,7,20); }
-   }
-   CameraPosition(); bool hover=GridPoint(Input.mousePosition,out int hx,out int hz);
-   world.Preview(hx,hz,hover&&tool!=Tool.Inspect,town.CanPlace(hx,hz,tool==Tool.Move?selected:-1)&&(tool!=Tool.Build||town.Money>=TownSimulation.Cost(building)));
+   CameraInput();
+   UpdateCamera(); bool hover=GridPoint(Input.mousePosition,out int hx,out int hz);
+   world.Preview(hx,hz,hover&&!(pointerInTown&&dragged)&&tool!=Tool.Inspect,town.CanPlace(hx,hz,tool==Tool.Move?selected:-1)&&(tool!=Tool.Build||town.Money>=TownSimulation.Cost(building)));
    for(int i=0;i<speed;i++) town.Tick(Mathf.Min(UnityEngine.Time.deltaTime,.1f)); world.Sync(town,speed==0);
    saveClock+=UnityEngine.Time.unscaledDeltaTime; if(saveClock>=30) { Save(false); saveClock=0; }
   }
@@ -161,7 +228,7 @@ namespace PigeonSandbox
    float speedW=104,pauseW=94,controlGap=10,speedX=w-24-speedW,pauseX=speedX-controlGap-pauseW;
    if(Button(new Rect(pauseX,25,pauseW,45),speed==0?"再開":"一時停止",speed==0)) speed=speed==0?1:0;
    if(Button(new Rect(speedX,25,speedW,45),"速度 ×"+(speed==0?1:speed))) speed=speed>=3?1:3;
-   LeftPanel(l); RightPanel(l); BottomPanel(l);
+   LeftPanel(l); RightPanel(l); BottomPanel(l); CameraControls();
   }
   void LeftPanel(UiLayout l)
   {
@@ -183,7 +250,7 @@ namespace PigeonSandbox
    }
    float inspectY=gridY+3*(bh+gap)+12;
    if(Button(new Rect(x,inspectY,w,40),"観察 / 施設を選ぶ",tool==Tool.Inspect)) tool=Tool.Inspect;
-   FlowLabel(x,inspectY+52,w,"左クリック：建設・選択\n右ドラッグ：視点回転\nホイール：ズーム",small);
+   FlowLabel(x,inspectY+52,w,"左クリック：建設・選択\n左ドラッグ：マップ移動\n右ドラッグ：視点回転\nホイール / ＋−：ズーム",small);
    if(Button(new Rect(x,r.y+r.height-58,w,40),"街を保存")) Save(true);
   }
   void RightPanel(UiLayout l)
@@ -222,7 +289,10 @@ namespace PigeonSandbox
     y=FlowLabel(0,y,width,"この街の住民たち",heading,draw)+12;
     foreach(var b in town.Birds)
     {
-     y=FlowLabel(0,y,width,(b.Mayor?"市長 ":b.Rare?"白い羽 ":"")+b.Name,heading,draw);
+     string name=(b.Mayor?"市長 ":b.Rare?"白い羽 ":"")+b.Name;
+     float nameHeight=Mathf.Max(44,TextHeight(name,width,button));
+     if(draw&&Button(new Rect(0,y,width,nameHeight),name,followedBird==b.Id)) FocusBird(b.Id);
+     y+=nameHeight+8;
      y=FlowLabel(0,y,width,TownSimulation.PersonalityName(b.Personality)+" · "+b.Action,small,draw)+16;
     }
     y=FlowLabel(0,y,width,"白い鳩のうわさ\n"+town.RareHint,small,draw);
