@@ -14,17 +14,6 @@ namespace PigeonSandbox
         int revision=-1;
         public void Initialize()
         {
-            Shape("Town island",PrimitiveType.Cube,transform,new Vector3(0,-.46f,0),new Vector3(22,.8f,22),"A6B29A");
-            for(int x=-4;x<=4;x++) for(int z=-4;z<=4;z++)
-                Shape("Plot "+x+","+z,PrimitiveType.Cube,transform,new Vector3(x*2.2f,-.04f,z*2.2f),new Vector3(2.16f,.12f,2.16f),(x+z)%2==0?"DFDDCB":"D8D8C5");
-            for(int i=0;i<5;i++)
-            {
-                Shape("Station steps",PrimitiveType.Cube,transform,new Vector3(-7+i*1.6f,.1f,10.4f),new Vector3(1.5f,.3f,.6f),"B8BDAA");
-            }
-            var station=new GameObject("Station gateway").transform; station.SetParent(transform,false);
-            Shape("Station left",PrimitiveType.Cube,station,new Vector3(-2,1.1f,10.4f),new Vector3(.4f,2.2f,.4f),"47665D");
-            Shape("Station right",PrimitiveType.Cube,station,new Vector3(2,1.1f,10.4f),new Vector3(.4f,2.2f,.4f),"47665D");
-            Shape("Station lintel",PrimitiveType.Cube,station,new Vector3(0,2.2f,10.4f),new Vector3(4.5f,.5f,.6f),"47665D");
             preview=new GameObject("Plot cursor").transform; preview.SetParent(transform,false);
             foreach(int sign in new[]{-1,1})
             {
@@ -32,6 +21,26 @@ namespace PigeonSandbox
                 Shape("Outline",PrimitiveType.Cube,preview,new Vector3(0,.13f,sign*1.04f),new Vector3(2.1f,.04f,.055f),"52765E");
             }
             preview.gameObject.SetActive(false);
+        }
+        Transform terrain;
+        int terrainRadius=-1;
+        void ResizeTerrain(int radius)
+        {
+            if(terrainRadius==radius)return;
+            if(terrain!=null) { terrain.gameObject.SetActive(false); Destroy(terrain.gameObject); }
+            terrain=new GameObject("Town ground").transform; terrain.SetParent(transform,false);
+            terrainRadius=radius; float edge=(radius+.73f)*2.2f;
+            Shape("Town island",PrimitiveType.Cube,terrain,new Vector3(0,-.46f,0),new Vector3((radius*2+2)*2.2f,.8f,(radius*2+2)*2.2f),"A6B29A");
+            for(int x=-radius;x<=radius;x++) for(int z=-radius;z<=radius;z++)
+                Shape("Plot "+x+","+z,PrimitiveType.Cube,terrain,new Vector3(x*2.2f,-.04f,z*2.2f),new Vector3(2.16f,.12f,2.16f),(x+z)%2==0?"DFDDCB":"D8D8C5");
+            for(int i=0;i<5;i++)
+            {
+                Shape("Station steps",PrimitiveType.Cube,terrain,new Vector3(-7+i*1.6f,.1f,edge),new Vector3(1.5f,.3f,.6f),"B8BDAA");
+            }
+            var station=new GameObject("Station gateway").transform; station.SetParent(terrain,false);
+            Shape("Station left",PrimitiveType.Cube,station,new Vector3(-2,1.1f,edge),new Vector3(.4f,2.2f,.4f),"47665D");
+            Shape("Station right",PrimitiveType.Cube,station,new Vector3(2,1.1f,edge),new Vector3(.4f,2.2f,.4f),"47665D");
+            Shape("Station lintel",PrimitiveType.Cube,station,new Vector3(0,2.2f,edge),new Vector3(4.5f,.5f,.6f),"47665D");
         }
         Material Mat(string hex)
         {
@@ -95,6 +104,36 @@ namespace PigeonSandbox
                 Bench(p,new Vector3(0,.1f,.7f));
                 Shape("Grain planter",PrimitiveType.Cylinder,p,new Vector3(-.65f,.14f,-.5f),new Vector3(.35f,.1f,.35f),"D3AC6C");
             }
+            else if(f.Kind==FacilityKind.Cafe)
+            {
+                Shape("Terrace",PrimitiveType.Cube,p,new Vector3(0,.035f,0),new Vector3(2,.07f,2),"CBB99A");
+                Shape("Coffee kiosk",PrimitiveType.Cube,p,new Vector3(0,.52f,.48f),new Vector3(1.35f,1.04f,.68f),"E4D7BC");
+                Shape("Sage roof",PrimitiveType.Cube,p,new Vector3(0,1.12f,.4f),new Vector3(1.6f,.16f,.95f),"6C9187");
+                Shape("Serving window",PrimitiveType.Cube,p,new Vector3(0,.68f,.128f),new Vector3(.88f,.4f,.035f),"506F69");
+                Shape("Counter",PrimitiveType.Cube,p,new Vector3(0,.43f,.05f),new Vector3(1.1f,.09f,.32f),"AE815B");
+                foreach(int side in new[]{-1,1})
+                {
+                    float x=side*.54f;
+                    Shape("Table stem",PrimitiveType.Cylinder,p,new Vector3(x,.23f,-.52f),new Vector3(.07f,.23f,.07f),"526D65");
+                    Shape("Round table",PrimitiveType.Cylinder,p,new Vector3(x,.48f,-.52f),new Vector3(.52f,.04f,.52f),"F0DEB5");
+                    Shape("Coffee cup",PrimitiveType.Cylinder,p,new Vector3(x,.57f,-.52f),new Vector3(.1f,.055f,.1f),"F4EFE0");
+                    Shape("Chair seat",PrimitiveType.Cube,p,new Vector3(x,.22f,-.9f),new Vector3(.28f,.08f,.25f),"7C9A8A");
+                    Shape("Chair back",PrimitiveType.Cube,p,new Vector3(x,.41f,-1),new Vector3(.28f,.34f,.045f),"7C9A8A");
+                }
+            }
+            else if(f.Kind==FacilityKind.Park)
+            {
+                Shape("Lawn",PrimitiveType.Cube,p,new Vector3(0,.045f,0),new Vector3(2,.09f,2),"94AC7F");
+                Shape("Garden path",PrimitiveType.Cube,p,new Vector3(0,.105f,-.2f),new Vector3(.65f,.035f,1.55f),"D9CDAF");
+                Bench(p,new Vector3(0,.12f,.67f));
+                foreach(int side in new[]{-1,1})
+                {
+                    float x=side*.73f;
+                    Shape("Flowerbed border",PrimitiveType.Cube,p,new Vector3(x,.13f,-.2f),new Vector3(.4f,.18f,.9f),"AF8A68");
+                    Shape("Flowerbed leaves",PrimitiveType.Cube,p,new Vector3(x,.24f,-.2f),new Vector3(.34f,.1f,.78f),"668966");
+                    for(int i=0;i<2;i++) Shape("Flower",PrimitiveType.Sphere,p,new Vector3(x,.32f,-.43f+i*.44f),new Vector3(.22f,.1f,.22f),side<0?"D6A58E":"E8CC81");
+                }
+            }
             else
             {
                 Shape("Tower base",PrimitiveType.Cube,p,new Vector3(0,.14f,0),new Vector3(1.3f,.28f,1.3f),"A1A993");
@@ -114,6 +153,7 @@ namespace PigeonSandbox
         }
         public void Sync(TownSimulation town,bool paused)
         {
+            ResizeTerrain(town.MapRadius);
             if(revision!=town.Revision)
             {
                 foreach(var building in buildings.Values) Destroy(building);
@@ -129,8 +169,8 @@ namespace PigeonSandbox
                 }
                 var pos=new Vector3(b.X,b.Y+.06f,b.Z);
                 float speed=previous.TryGetValue(b.Id,out var old)?Vector3.Distance(old,pos)/Mathf.Max(.001f,UnityEngine.Time.deltaTime):0;
-                model.transform.position=pos; model.transform.rotation=Quaternion.Euler(0,b.Heading*Mathf.Rad2Deg,0);
-                model.Animate(town.Time,paused?0:speed,b.Y>.15f,b.Action=="食事" || b.Action=="水浴び"); previous[b.Id]=pos;
+                model.transform.position=pos; model.transform.rotation=Quaternion.Euler(0,b.Heading+b.CheerTurn,0);
+                model.Animate(town.Time+b.Id*.43f,paused?0:speed,b.Y>.15f,b.Action=="食事" || b.Action=="水浴び",b.Action); previous[b.Id]=pos;
             }
             var ids=new HashSet<int>();
             foreach(var v in town.Visitors)
@@ -144,7 +184,7 @@ namespace PigeonSandbox
                     foreach(int s in new[]{-1,1}) Shape("Leg",PrimitiveType.Cube,human,new Vector3(s*.07f,.1f,0),new Vector3(.08f,.25f,.1f),"53645B");
                     people.Add(v.Id,human);
                 }
-                human.position=new Vector3(v.X,.065f,v.Z); human.rotation=Quaternion.Euler(0,v.Heading*Mathf.Rad2Deg,0);
+                human.position=new Vector3(v.X,.065f,v.Z); human.rotation=Quaternion.Euler(0,v.Heading,0);
             }
             var gone=new List<int>(); foreach(var pair in people) if(!ids.Contains(pair.Key)) { Destroy(pair.Value.gameObject); gone.Add(pair.Key); }
             foreach(int id in gone) people.Remove(id);

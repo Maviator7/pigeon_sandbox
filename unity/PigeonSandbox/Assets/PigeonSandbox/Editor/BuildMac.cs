@@ -9,6 +9,7 @@ namespace PigeonSandbox.Editor
 {
     public static class BuildMac
     {
+        public const string ReleaseVersion="0.1.0";
         [InitializeOnLoadMethod]
         static void FirstOpen()
         {
@@ -59,6 +60,7 @@ namespace PigeonSandbox.Editor
             EditorSceneManager.SaveScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene(),"Assets/Scenes/Park.unity");
             EditorBuildSettings.scenes=new[]{new EditorBuildSettingsScene("Assets/Scenes/Park.unity",true)};
             PlayerSettings.productName="Pigeon Sandbox";
+            PlayerSettings.bundleVersion=ReleaseVersion;
             PlayerSettings.companyName="PigeonSandbox";
             PlayerSettings.defaultScreenWidth=1280; PlayerSettings.defaultScreenHeight=800;
             PlayerSettings.fullScreenMode=FullScreenMode.Windowed;
