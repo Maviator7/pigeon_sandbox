@@ -10,19 +10,23 @@ namespace PigeonSandbox
         private Material seedMaterial;
         private bool initialized;
 
-        public void InitializeBirdOnly(bool white, bool mayor)
+        public void InitializeBirdOnly(bool white, bool mayor, Plumage feather=Plumage.Blue)
         {
             if (initialized) return;
             initialized = true;
             CreateBird();
-            if (white)
-                foreach (var renderer in Bird.GetComponentsInChildren<Renderer>())
-                    if (renderer.sharedMaterial.name.Contains("grey") || renderer.sharedMaterial.name.Contains("Slate"))
-                    {
-                        var material = new Material(renderer.sharedMaterial);
-                        material.color = new Color(.94f,.91f,.83f);
-                        renderer.sharedMaterial = material;
-                    }
+            if(white)feather=Plumage.White;
+            foreach(var renderer in Bird.GetComponentsInChildren<Renderer>())
+            {
+                string part=renderer.gameObject.name;
+                bool wing=part=="Folded wing", body=part=="Pear shaped breast"||part=="Soft chest", head=part=="Round head", dark=part=="Broad wing bar"||part=="Flight tip"||part=="Smooth tail";
+                string hex=null;
+                if(feather==Plumage.White&&(wing||body||head))hex="EFE9D8";
+                if(feather==Plumage.Brown)hex=wing?"BE9471":body?"9C755E":head?"785848":dark?"594638":null;
+                if(feather==Plumage.Checker)hex=wing?"586470":body?"788490":dark?"303B47":null;
+                if(feather==Plumage.Pied)hex=wing||body?"EEEDE3":head||dark?"303B47":null;
+                if(hex!=null)renderer.sharedMaterial=Material("Plumage "+feather,hex);
+            }
             if (mayor)
             {
                 var gold = Material("Mayor gold", "D4AA50");

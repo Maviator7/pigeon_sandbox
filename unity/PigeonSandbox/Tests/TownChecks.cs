@@ -70,5 +70,37 @@ public static class TownChecks {
  interaction.Visitors.Clear();interaction.Tick(.01f);Check(cb.Action=="テラスで休憩","interaction ends when visitor leaves");
  var recovery=new TownSimulation();recovery.Money=0;Run(recovery,50);Check(recovery.Money>0,"zero money recovery");
  }
- public static void Main(){RunAll();}
+ static void FeatherChecks(){
+ var t=new TownSimulation(88);Run(t,60);Check(!t.Discovered(Plumage.Checker)&&!t.Discovered(Plumage.Brown)&&!t.Discovered(Plumage.Pied),"feathers require their habitats");
+ t.Money=10000;t.Build(FacilityKind.Bakery,1,0);Run(t,20);t.Move(t.At(1,0).Id,4,4);Run(t,1);t.Move(t.At(4,4).Id,1,0);Run(t,30);Check(!t.Discovered(Plumage.Checker),"interrupted habitat resets arrival timer");
+ t.Build(FacilityKind.Cafe,1,1);t.Build(FacilityKind.Park,-1,0);Run(t,46);
+ Check(t.Discovered(Plumage.Checker)&&t.Discovered(Plumage.Brown)&&t.Discovered(Plumage.Pied),"three habitats summon three feather variants");
+ var brown=t.Birds.Find(b=>b.Plumage==Plumage.Brown);t.RenameBird(brown.Id,"ココア");var saved=t.Capture();var restored=new TownSimulation();Check(restored.Restore(saved)&&restored.Birds.Find(b=>b.Id==brown.Id).Name=="ココア"&&restored.Discovered(Plumage.Brown),"feathers and custom names persist");
+ Run(restored,180);foreach(var f in new[]{Plumage.Checker,Plumage.Brown,Plumage.Pied})Check(restored.Birds.FindAll(b=>b.Plumage==f).Count==1,"discovered variants do not duplicate after load");
+ var legacy=new TownSimulation().Capture();legacy.Birds[1].Rare=true;Check(restored.Restore(legacy)&&restored.Discovered(Plumage.White)&&restored.Discovered(Plumage.Blue),"legacy gray and rare white saves migrate");
+ var invalid=restored.Capture();invalid.Birds[0].Plumage=(Plumage)999;Check(!restored.Restore(invalid)&&restored.Discovered(Plumage.White),"invalid feather rejected without changing town");
+ var full=new TownSimulation();var fullSave=full.Capture();for(int i=0;i<8;i++)fullSave.Birds.Add(new TownBird{Id=100+i,Name="旧住民"+i});fullSave.Birds[1].Rare=true;Check(full.Restore(fullSave),"legacy full town loads");full.Money=10000;full.Build(FacilityKind.Bakery,1,0);full.Build(FacilityKind.Cafe,1,1);full.Build(FacilityKind.Park,-1,0);Run(full,90);Check(full.Birds.Count==15&&full.Discovered(Plumage.Pied)&&full.Birds.Exists(b=>b.Name=="旧住民7"),"full legacy town welcomes new feathers without replacing residents");
+ Check(new TownSimulation().Restore(full.Capture()),"expanded bird limit save roundtrip");
+ }
+ static void DaylightChecks(){
+ var t=new TownSimulation();Check(t.TimeOfDay==TownTimeOfDay.Morning,"new town starts in morning");
+ foreach(float time in new[]{0f,39.9f,40f,79.9f,80f,119.9f,120f,160f})
+ {
+  var save=t.Capture();save.Time=time;Check(t.Restore(save),"daylight save loads");
+  int expected=(int)((time%120)/40);Check((int)t.TimeOfDay==expected,"time phase boundary "+time);
+  float progress=t.DayProgress;t.Tick(0);Check(t.DayProgress==progress,"pause freezes daylight");
+ }
+ var saved=t.Capture();var restored=new TownSimulation();restored.Restore(saved);Check(restored.TimeOfDay==t.TimeOfDay&&restored.DayProgress==t.DayProgress,"saved daylight restores exactly");
+ int morningMeals=0,noonBaths=0,eveningRests=0,morningRests=0;
+ for(int seed=0;seed<60;seed++)
+ {
+  foreach(int phase in new[]{0,1,2})
+  {
+   var day=new TownSimulation(seed);day.Money=5000;day.Build(FacilityKind.Bakery,1,0);day.Build(FacilityKind.Fountain,1,1);day.Build(FacilityKind.Park,-1,1);day.Build(FacilityKind.Housing,-3,1);day.Time=phase*40;day.Tick(.1f);
+   foreach(var bird in day.Birds){var place=day.Facilities.Find(f=>f.Id==bird.TargetId);if(phase==0&&place.Kind==FacilityKind.Bakery)morningMeals++;if(phase==0&&(place.Kind==FacilityKind.Park||place.Kind==FacilityKind.Tree||place.Kind==FacilityKind.Housing))morningRests++;if(phase==1&&place.Kind==FacilityKind.Fountain)noonBaths++;if(phase==2&&(place.Kind==FacilityKind.Park||place.Kind==FacilityKind.Tree||place.Kind==FacilityKind.Housing))eveningRests++;}
+  }
+ }
+ Check(morningMeals>0&&noonBaths>0&&eveningRests>morningRests,"daily routines retain food bathing and evening rest choices");
+ }
+ public static void Main(){RunAll();SocialChecks.RunAll();FeatherChecks();DaylightChecks();WishChecks.RunAll();}
 }

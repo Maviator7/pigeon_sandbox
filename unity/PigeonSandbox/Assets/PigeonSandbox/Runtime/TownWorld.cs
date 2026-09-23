@@ -164,13 +164,13 @@ namespace PigeonSandbox
                 if(!birds.TryGetValue(b.Id,out var model))
                 {
                     var obj=new GameObject(b.Name); obj.transform.SetParent(transform,false);
-                    model=obj.AddComponent<PigeonWorld>(); model.InitializeBirdOnly(b.Rare,b.Mayor);
+                    model=obj.AddComponent<PigeonWorld>(); model.InitializeBirdOnly(b.Rare,b.Mayor,TownSimulation.FeatherOf(b));
                     model.transform.localScale=Vector3.one*.46f; birds.Add(b.Id,model);
                 }
                 var pos=new Vector3(b.X,b.Y+.06f,b.Z);
                 float speed=previous.TryGetValue(b.Id,out var old)?Vector3.Distance(old,pos)/Mathf.Max(.001f,UnityEngine.Time.deltaTime):0;
                 model.transform.position=pos; model.transform.rotation=Quaternion.Euler(0,b.Heading+b.CheerTurn,0);
-                model.Animate(town.Time+b.Id*.43f,paused?0:speed,b.Y>.15f,b.Action=="食事" || b.Action=="水浴び",b.Action); previous[b.Id]=pos;
+                model.Animate(town.Time+b.Id*.43f,paused?0:speed,b.Y>.15f&&b.Social==SocialActivity.None,b.Action=="食事" || b.Action=="水浴び",b.Action); previous[b.Id]=pos;
             }
             var ids=new HashSet<int>();
             foreach(var v in town.Visitors)

@@ -5,7 +5,7 @@ namespace PigeonSandbox
 {
  public sealed class SandboxApp : MonoBehaviour
  {
-  TownSimulation town; TownWorld world; Camera view; Font font;
+  TownSimulation town; TownWorld world; Camera view; Font font; Light sun;
   GUIStyle title,heading,text,small,button,marker,nameInput;
   float yaw=35,pitch=48,zoom=14,saveClock;
   int speed=1,selected=-1,tab;
@@ -52,13 +52,29 @@ namespace PigeonSandbox
    Application.targetFrameRate=60; font=Resources.Load<Font>("NotoSansJP"); town=new TownSimulation(); Load(); zoom=targetZoom=14+town.ExpansionLevel*3;
    world=new GameObject("Mayor town").AddComponent<TownWorld>(); world.Initialize();
    RenderSettings.ambientMode=UnityEngine.Rendering.AmbientMode.Flat; RenderSettings.ambientLight=new Color(.72f,.75f,.7f);
-   var sun=new GameObject("Afternoon").AddComponent<Light>(); sun.type=LightType.Directional; sun.intensity=.85f;
+   sun=new GameObject("Daylight").AddComponent<Light>(); sun.type=LightType.Directional; sun.intensity=.85f;
    sun.color=new Color(1,.95f,.84f); sun.shadows=LightShadows.Soft; sun.shadowStrength=.55f; sun.transform.rotation=Quaternion.Euler(52,-35,0);
    QualitySettings.shadowDistance=70;
    view=new GameObject("Town camera").AddComponent<Camera>(); view.clearFlags=CameraClearFlags.SolidColor;
    view.backgroundColor=new Color(.76f,.8f,.71f); view.orthographic=true; view.nearClipPlane=.1f; view.farClipPlane=100;
-   view.gameObject.AddComponent<AudioListener>(); CameraPosition(); world.Sync(town,false);
+   view.gameObject.AddComponent<AudioListener>(); CameraPosition(); UpdateDaylight(); world.Sync(town,false);
   }
+  void UpdateDaylight()
+  {
+   if(sun==null||view==null)return;
+   // Three daylight anchors form a continuous loop, including evening back to morning.
+   float phase=town.DayProgress*3;
+   int from=Mathf.Min(2,(int)phase),to=(from+1)%3;
+   float blend=Mathf.SmoothStep(0,1,phase-from);
+   sun.color=Color.Lerp(DaylightSun[from],DaylightSun[to],blend);
+   sun.intensity=Mathf.Lerp(DaylightIntensity[from],DaylightIntensity[to],blend);
+   RenderSettings.ambientLight=Color.Lerp(DaylightAmbient[from],DaylightAmbient[to],blend);
+   view.backgroundColor=Color.Lerp(DaylightSky[from],DaylightSky[to],blend);
+  }
+  static readonly Color[] DaylightSun={new Color(1,.94f,.81f),new Color(1,.98f,.92f),new Color(1,.77f,.59f)};
+  static readonly Color[] DaylightAmbient={new Color(.72f,.75f,.7f),new Color(.76f,.79f,.74f),new Color(.75f,.7f,.65f)};
+  static readonly Color[] DaylightSky={new Color(.76f,.8f,.71f),new Color(.76f,.82f,.77f),new Color(.85f,.75f,.66f)};
+  static readonly float[] DaylightIntensity={.82f,.9f,.76f};
   void CameraPosition()
   {
    var l=Layout(Width,Height); view.rect=new Rect(l.center.x/Width,(Height-l.center.y-l.center.height)/Height,l.center.width/Width,l.center.height/Height);
@@ -96,11 +112,8 @@ namespace PigeonSandbox
   }
   float RenameControls(TownBird bird,float y,float width,bool draw)
   {
-   if(editingBird!=bird.Id)
-   {
-    if(draw&&Button(new Rect(0,y,width,36),"名前を変更")) BeginRename(bird);
-    return y+48;
-   }
+   if(editingBird!=bird.Id)return y;
+   y=FlowLabel(0,y,width,"「"+bird.Name+"」の名前を変更",small,draw);
    if(draw)
    {
     GUI.SetNextControlName("bird-name-input");
@@ -195,7 +208,7 @@ namespace PigeonSandbox
    var map=Layout(Width,Height).center;
    Vector2 point=new Vector2(screen.x/Scale,Height-screen.y/Scale);
    if(!map.Contains(point)||point.y<CameraToolbar().yMax+42) return;
-   string label=bird.Name+" · "+bird.Action;
+   string label=bird.Name+" · "+town.ActivityOf(bird);
    float width=Mathf.Min(map.width-24,Mathf.Max(140,marker.CalcSize(new GUIContent(label)).x+24));
    Rect tag=new Rect(Mathf.Clamp(point.x-width/2,map.x+8,map.xMax-width-8),point.y-36,width,30);
    Panel(tag,green); GUI.Label(tag,label,marker);
@@ -230,7 +243,7 @@ namespace PigeonSandbox
    else { pointerInTown=false; dragged=false; }
    UpdateCamera(UnityEngine.Time.unscaledDeltaTime); bool hover=GridPoint(Input.mousePosition,out int hx,out int hz);
    world.Preview(hx,hz,hover&&!(pointerInTown&&dragged)&&tool!=Tool.Inspect,town.CanPlace(hx,hz,tool==Tool.Move?selected:-1)&&(tool!=Tool.Build||town.Money>=TownSimulation.Cost(building)));
-   for(int i=0;i<speed;i++) town.Tick(Mathf.Min(UnityEngine.Time.deltaTime,.1f)); world.Sync(town,speed==0);
+   for(int i=0;i<speed;i++) town.Tick(Mathf.Min(UnityEngine.Time.deltaTime,.1f)); world.Sync(town,speed==0); UpdateDaylight();
    saveClock+=UnityEngine.Time.unscaledDeltaTime; if(saveClock>=30) { Save(false); saveClock=0; }
   }
   void Save(bool notify)
@@ -274,6 +287,16 @@ namespace PigeonSandbox
    Panel(r,active?green:enabled?new Color(.89f,.89f,.82f):new Color(.92f,.92f,.87f));
    button.normal.textColor=active?Color.white:enabled?ink:new Color(.6f,.62f,.56f); bool hit=GUI.Button(r,value,button); button.normal.textColor=ink; return hit&&enabled;
   }
+  bool RenameButton(Rect r,TownBird bird)
+  {
+   bool active=editingBird==bird.Id;
+   Panel(r,green);
+   Panel(new Rect(r.x+1,r.y+1,r.width-2,r.height-2),active?green:paper);
+   button.normal.textColor=active?Color.white:green;
+   bool hit=GUI.Button(r,new GUIContent("改名","「"+bird.Name+"」の名前を変更"),button);
+   button.normal.textColor=ink;
+   return hit&&!active;
+  }
   float Meter(float x,float y,float w,string name,float value)
   {
    float barY=FlowLabel(x,y,w,name+"  "+Mathf.RoundToInt(value),small);
@@ -295,7 +318,7 @@ namespace PigeonSandbox
    Meter(615,23,140,"鳩の幸福",town.PigeonHappiness); Meter(785,23,140,"人の満足",town.HumanSatisfaction);
    float residentX=Mathf.Min(965,w-470);
    float residentBottom=FlowLabel(residentX,18,210,"住民 "+town.Birds.Count+"羽 / 来訪 "+town.Visitors.Count+"人",text);
-   FlowLabel(residentX,residentBottom,210,"DAY "+town.Day+" · 購買 "+town.Purchases+"回",small);
+   FlowLabel(residentX,residentBottom,210,"DAY "+town.Day+" · "+town.TimeOfDayName+" · 購買 "+town.Purchases+"回",small);
    float speedW=104,pauseW=94,controlGap=10,speedX=w-24-speedW,pauseX=speedX-controlGap-pauseW;
    if(Button(new Rect(pauseX,25,pauseW,45),speed==0?"再開":"一時停止",speed==0)) speed=speed==0?1:0;
    if(Button(new Rect(speedX,25,speedW,45),"速度 ×"+(speed==0?1:speed))) speed=speed>=3?1:3;
@@ -354,7 +377,19 @@ namespace PigeonSandbox
    float y=0;
    if(tab==0)
    {
-    y=FlowLabel(0,y,width,"住民からのおたより",heading,draw)+12;
+    y=FlowLabel(0,y,width,"鳩からの小さなお願い",heading,draw);
+    y=FlowLabel(0,y,width,"期限はありません。気が向いたら叶えてね。",small,draw)+8;
+    foreach(var wish in town.Wishes)
+    {
+     var owner=town.WishOwner(wish);if(owner==null)continue;
+     string caption=owner.Name+"から";float height=Mathf.Max(44,TextHeight(caption,width,button));
+     if(draw&&Button(new Rect(0,y,width,height),caption,followedBird==owner.Id))FocusBird(owner.Id);
+     y+=height+8;
+     y=FlowLabel(0,y,width,(wish.Complete?"✓ ":"")+TownSimulation.WishTitle(wish.Kind),text,draw);
+     y=FlowLabel(0,y,width,TownSimulation.WishDescription(wish.Kind),small,draw);
+     y=FlowLabel(0,y,width,wish.Complete?"叶いました · ありがとう！":town.WishHabitatReady(wish)?"場所は準備できました。使ってくれるのを待とう。":"街を整えて、居場所をつくろう。",small,draw)+16;
+    }
+    y=FlowLabel(0,y,width,"街のみんなからのおたより",heading,draw)+12;
     for(int i=0;i<town.Requests.Count;i++)
     {
      var request=town.Requests[i];
@@ -370,13 +405,33 @@ namespace PigeonSandbox
     foreach(var b in town.Birds)
     {
      string name=(b.Mayor?"市長 ":b.Rare?"白い羽 ":"")+b.Name;
-     float nameHeight=Mathf.Max(44,TextHeight(name,width,button));
-     if(draw&&Button(new Rect(0,y,width,nameHeight),name,followedBird==b.Id)) FocusBird(b.Id);
+     const float editWidth=60,headerGap=8;
+     float nameWidth=width-editWidth-headerGap;
+     float nameHeight=Mathf.Max(44,TextHeight(name,nameWidth,button));
+     if(draw&&Button(new Rect(0,y,nameWidth,nameHeight),name,followedBird==b.Id)) FocusBird(b.Id);
+     if(draw&&RenameButton(new Rect(nameWidth+headerGap,y+(nameHeight-44)/2,editWidth,44),b)) BeginRename(b);
      y+=nameHeight+8;
-     y=FlowLabel(0,y,width,TownSimulation.PersonalityName(b.Personality)+" · "+b.Action,small,draw);
+     y=FlowLabel(0,y,width,TownSimulation.FeatherName(TownSimulation.FeatherOf(b))+" · "+TownSimulation.PersonalityName(b.Personality)+" · "+town.ActivityOf(b),small,draw);
+     var friend=town.BestFriendOf(b);
+     if(friend!=null)y=FlowLabel(0,y,width,"よく一緒にいる："+friend.Name,small,draw);
      y=RenameControls(b,y,width,draw);
+     if(draw)Panel(new Rect(0,y+8,width,1),new Color(.79f,.81f,.74f));
+     y+=29;
     }
-    y=FlowLabel(0,y,width,"白い鳩のうわさ\n"+town.RareHint,small,draw);
+    y=FlowLabel(0,y,width,"羽色の図鑑",heading,draw)+12;
+    for(int i=0;i<5;i++)
+    {
+     var feather=(Plumage)i; bool found=town.Discovered(feather);
+     if(draw)GUI.DrawTexture(new Rect(0,y,52,52),FeatherPortrait(feather,found));
+     y=FlowLabel(62,y,width-62,found?TownSimulation.FeatherName(feather):"未発見 · ？",button,draw);
+     y+=28;
+     if(found)
+     {
+      string names=string.Join("、",town.Birds.FindAll(b=>TownSimulation.FeatherOf(b)==feather).ConvertAll(b=>b.Name).ToArray());
+      y=FlowLabel(0,y,width,"出会った仲間："+names,small,draw);
+     }
+     y=FlowLabel(0,y,width,town.FeatherHint(feather),small,draw)+22;
+    }
    }
    else
    {
@@ -394,6 +449,23 @@ namespace PigeonSandbox
     }
    }
    return y+16;
+  }
+  readonly Texture2D[] featherPortraits=new Texture2D[6];
+  Texture2D FeatherPortrait(Plumage feather,bool found)
+  {
+   int index=found?(int)feather:5;
+   if(featherPortraits[index]!=null)return featherPortraits[index];
+   var texture=new Texture2D(64,64); var pixels=new Color[64*64];
+   Color color; ColorUtility.TryParseHtmlString(new[]{"#7D8B96","#586470","#9C755E","#EEEDE3","#EFE9D8","#34483E"}[index],out color);
+   for(int y=0;y<64;y++)for(int x=0;x<64;x++)
+   {
+    float body=(x-29)*(x-29)/324f+(y-25)*(y-25)/225f;
+    float head=(x-43)*(x-43)/81f+(y-45)*(y-45)/81f;
+    bool neck=x>34&&x<49&&y>24&&y<46,tail=x>5&&x<25&&y>14&&y<24,beak=x>=49&&x<60&&y>40&&y<45;
+    if(body<1||head<1||neck||tail||beak)pixels[y*64+x]=color;
+    if(found&&body<.6f&&x<35)pixels[y*64+x]=feather==Plumage.Pied?new Color(.19f,.23f,.28f):color*.8f;
+   }
+   texture.SetPixels(pixels);texture.Apply();featherPortraits[index]=texture;return texture;
   }
   void BottomPanel(UiLayout l)
   {

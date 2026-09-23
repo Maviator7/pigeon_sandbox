@@ -25,5 +25,9 @@ with tempfile.TemporaryDirectory(prefix='pigeon-checks-') as temporary:
     town_executable = output / 'TownChecks.exe'
     subprocess.run([str(mono), str(csc), '-nologo', '-out:' + str(town_executable),
                     str(project / 'Assets/PigeonSandbox/Core/TownSimulation.cs'),
-                    str(project / 'Tests/TownChecks.cs')], check=True)
+                    str(project / 'Assets/PigeonSandbox/Core/TownSocial.cs'),
+                    str(project / 'Assets/PigeonSandbox/Core/TownWishes.cs'),
+                    str(project / 'Tests/TownChecks.cs'),
+                    str(project / 'Tests/SocialChecks.cs'),
+                    str(project / 'Tests/WishChecks.cs')], check=True)
     subprocess.run([str(mono), str(town_executable)], check=True)
