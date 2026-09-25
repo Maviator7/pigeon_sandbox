@@ -9,7 +9,7 @@ namespace PigeonSandbox.Editor
 {
     public static class BuildMac
     {
-        public const string ReleaseVersion="0.1.0";
+        public const string ReleaseVersion="0.2.0";
         [InitializeOnLoadMethod]
         static void FirstOpen()
         {
