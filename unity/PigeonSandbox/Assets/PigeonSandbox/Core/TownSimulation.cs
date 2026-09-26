@@ -385,7 +385,7 @@ namespace PigeonSandbox
             return null;
         }
 
-        TownBird BirdById(int id)
+        public TownBird BirdById(int id)
         {
             foreach (var bird in Birds)
                 if (bird.Id == id)

@@ -58,7 +58,8 @@ namespace PigeonSandbox.Editor
             Assert(benchmark.Facilities.Count == benchmark.MapSize * benchmark.MapSize && benchmark.Birds.Count == 15, "Benchmark town is full");
             FriendshipChecks.Verify();
             DaylightChecks.Verify();
-            Debug.Log("PIGEON VERIFICATION PASSED: build, economy, relocation, policy, determinism, benchmark town, save JSON, daylight");
+            WorldSyncChecks.Verify();
+            Debug.Log("PIGEON VERIFICATION PASSED: build, economy, relocation, policy, determinism, benchmark town, save JSON, daylight, world sync");
         }
 
         [MenuItem("Pigeon Sandbox/Create observation scene")]

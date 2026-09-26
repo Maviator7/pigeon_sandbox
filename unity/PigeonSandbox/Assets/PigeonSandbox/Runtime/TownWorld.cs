@@ -5,11 +5,29 @@ namespace PigeonSandbox
 {
     public sealed class TownWorld : MonoBehaviour
     {
-        readonly Dictionary<int, GameObject> buildings = new Dictionary<int, GameObject>();
+        // One view per facility id; rebuilt only when its kind or level changes, moved in place otherwise.
+        sealed class FacilityView
+        {
+            public GameObject Root;
+            public FacilityKind Kind;
+            public int Level;
+        }
+
+        readonly Dictionary<int, FacilityView> buildings = new Dictionary<int, FacilityView>();
+        // Reused every frame so syncing does not allocate.
+        readonly HashSet<int> liveIds = new HashSet<int>();
+        readonly List<int> staleIds = new List<int>();
+        Renderer[] previewRenderers;
+        int previewState = -1;
+        public int FacilityModelsBuilt
+        {
+            get;
+            private set;
+        }
+
         readonly Dictionary<int, PigeonWorld> birds = new Dictionary<int, PigeonWorld>();
         readonly Dictionary<int, Transform> people = new Dictionary<int, Transform>();
         readonly Dictionary<int, Vector3> previous = new Dictionary<int, Vector3>();
-        readonly Dictionary<string, Material> palette = new Dictionary<string, Material>();
         Transform preview;
         int revision = -1;
         public void Initialize()
@@ -22,6 +40,7 @@ namespace PigeonSandbox
                 Shape("Outline", PrimitiveType.Cube, preview, new Vector3(0, .13f, sign * 1.04f), new Vector3(2.1f, .04f, .055f), "52765E");
             }
 
+            previewRenderers = preview.GetComponentsInChildren<Renderer>();
             preview.gameObject.SetActive(false);
         }
 
@@ -34,7 +53,7 @@ namespace PigeonSandbox
             if (terrain != null)
             {
                 terrain.gameObject.SetActive(false);
-                Destroy(terrain.gameObject);
+                MaterialCache.Release(terrain.gameObject);
             }
 
             terrain = new GameObject("Town ground").transform;
@@ -57,18 +76,7 @@ namespace PigeonSandbox
             Shape("Station lintel", PrimitiveType.Cube, station, new Vector3(0, 2.2f, edge), new Vector3(4.5f, .5f, .6f), "47665D");
         }
 
-        Material Mat(string hex)
-        {
-            if (palette.TryGetValue(hex, out var value))
-                return value;
-            ColorUtility.TryParseHtmlString("#" + hex, out var color);
-            value = new Material(Shader.Find("Standard"))
-            {color = color};
-            value.SetFloat("_Glossiness", .12f);
-            palette.Add(hex, value);
-            return value;
-        }
-
+        static Material Mat(string hex) => MaterialCache.Get(hex);
         Transform Shape(string name, PrimitiveType type, Transform parent, Vector3 pos, Vector3 scale, string color)
         {
             var obj = GameObject.CreatePrimitive(type);
@@ -77,24 +85,30 @@ namespace PigeonSandbox
             obj.transform.localPosition = pos;
             obj.transform.localScale = scale;
             obj.GetComponent<Renderer>().sharedMaterial = Mat(color);
-            Destroy(obj.GetComponent<Collider>());
+            MaterialCache.Release(obj.GetComponent<Collider>());
             return obj.transform;
         }
 
         public void Preview(int x, int z, bool show, bool valid)
         {
-            preview.gameObject.SetActive(show);
+            if (preview.gameObject.activeSelf != show)
+                preview.gameObject.SetActive(show);
             preview.position = new Vector3(x * 2.2f, 0, z * 2.2f);
-            foreach (var r in preview.GetComponentsInChildren<Renderer>())
-                r.sharedMaterial = Mat(valid ? "487F65" : "C26D52");
+            int state = valid ? 1 : 0;
+            if (state == previewState)
+                return;
+            previewState = state;
+            var material = Mat(valid ? "487F65" : "C26D52");
+            foreach (var r in previewRenderers)
+                r.sharedMaterial = material;
         }
 
-        void FacilityModel(Facility f)
+        GameObject FacilityModel(Facility f)
         {
             var root = new GameObject(TownSimulation.NameOf(f.Kind));
             root.transform.SetParent(transform, false);
-            root.transform.localPosition = new Vector3(f.X * 2.2f, 0, f.Z * 2.2f);
-            buildings[f.Id] = root;
+            root.transform.localPosition = FacilityPosition(f);
+            FacilityModelsBuilt++;
             var p = root.transform;
             if (f.Kind == FacilityKind.Bakery)
             {
@@ -180,8 +194,39 @@ namespace PigeonSandbox
 
             if (f.Level > 1)
                 Shape("Improvement garden", PrimitiveType.Sphere, p, new Vector3(.78f, .2f, .7f), new Vector3(.35f, .4f, .35f), "80A479");
+            return root;
         }
 
+        static Vector3 FacilityPosition(Facility f) => new Vector3(f.X * 2.2f, 0, f.Z * 2.2f);
+        void SyncFacilities(TownSimulation town)
+        {
+            liveIds.Clear();
+            foreach (var f in town.Facilities)
+            {
+                liveIds.Add(f.Id);
+                if (buildings.TryGetValue(f.Id, out var view) && view.Kind == f.Kind && view.Level == f.Level)
+                {
+                    view.Root.transform.localPosition = FacilityPosition(f);
+                    continue;
+                }
+
+                if (view != null)
+                    MaterialCache.Release(view.Root);
+                buildings[f.Id] = new FacilityView{Root = FacilityModel(f), Kind = f.Kind, Level = f.Level};
+            }
+
+            staleIds.Clear();
+            foreach (var pair in buildings)
+                if (!liveIds.Contains(pair.Key))
+                    staleIds.Add(pair.Key);
+            foreach (int id in staleIds)
+            {
+                MaterialCache.Release(buildings[id].Root);
+                buildings.Remove(id);
+            }
+        }
+
+        public GameObject FacilityObject(int id) => buildings.TryGetValue(id, out var view) ? view.Root : null;
         void Bench(Transform p, Vector3 at)
         {
             Shape("Bench seat", PrimitiveType.Cube, p, at + new Vector3(0, .23f, 0), new Vector3(1.15f, .12f, .35f), "AF8A5D");
@@ -195,11 +240,7 @@ namespace PigeonSandbox
             ResizeTerrain(town.MapRadius);
             if (revision != town.Revision)
             {
-                foreach (var building in buildings.Values)
-                    Destroy(building);
-                buildings.Clear();
-                foreach (var f in town.Facilities)
-                    FacilityModel(f);
+                SyncFacilities(town);
                 revision = town.Revision;
             }
 
@@ -223,10 +264,10 @@ namespace PigeonSandbox
                 previous[b.Id] = pos;
             }
 
-            var ids = new HashSet<int>();
+            liveIds.Clear();
             foreach (var v in town.Visitors)
             {
-                ids.Add(v.Id);
+                liveIds.Add(v.Id);
                 if (!people.TryGetValue(v.Id, out var human))
                 {
                     human = new GameObject("Visitor").transform;
@@ -242,15 +283,15 @@ namespace PigeonSandbox
                 human.rotation = Quaternion.Euler(0, v.Heading, 0);
             }
 
-            var gone = new List<int>();
+            staleIds.Clear();
             foreach (var pair in people)
-                if (!ids.Contains(pair.Key))
+                if (!liveIds.Contains(pair.Key))
                 {
-                    Destroy(pair.Value.gameObject);
-                    gone.Add(pair.Key);
+                    MaterialCache.Release(pair.Value.gameObject);
+                    staleIds.Add(pair.Key);
                 }
 
-            foreach (int id in gone)
+            foreach (int id in staleIds)
                 people.Remove(id);
         }
     }
