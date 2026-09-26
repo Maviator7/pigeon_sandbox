@@ -34,6 +34,15 @@ public static class BenchmarkChecks
         for (int i = 0; i < 600; i++)
             town.Tick(.1f);
         Check(town.Birds.Count == 15 && town.Visitors.Count > 0, "benchmark town stays populated while running");
+        // Steady-state ticks should not churn the GC: hot lookups must avoid closures and temporary lists.
+        for (int i = 0; i < 600; i++)
+            town.Tick(1f / 60);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 3000; i++)
+            town.Tick(1f / 60);
+        double perTick = (GC.GetAllocatedBytesForCurrentThread() - before) / 3000.0;
+        Console.WriteLine("benchmark town allocates " + perTick.ToString("0") + " bytes per tick");
+        Check(perTick < 512, "benchmark town tick allocates under 512 bytes");
         var restored = new TownSimulation();
         Check(restored.Restore(town.Capture()) && restored.Facilities.Count == town.Facilities.Count, "benchmark town survives save and restore");
     }

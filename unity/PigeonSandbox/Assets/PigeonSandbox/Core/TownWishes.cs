@@ -23,7 +23,7 @@ namespace PigeonSandbox
     public partial class TownSimulation
     {
         public readonly List<BirdWish> Wishes = new List<BirdWish>();
-        public TownBird WishOwner(BirdWish wish) => Birds.Find(b => b.Id == wish.BirdId);
+        public TownBird WishOwner(BirdWish wish) => BirdById(wish.BirdId);
         public static string WishTitle(BirdWishKind kind) => new[]{"仲良しとパン屋のそばで", "おうちの近くで水浴び", "静かな木陰でひと休み"}[(int)kind];
         public static string WishDescription(BirdWishKind kind) => new[]{"パン屋の2マス以内の広場で、仲良しと一緒に休みたいな。", "集合住宅の2マス以内にある噴水で、水浴びしたいな。", "木の2マス以内の花壇の公園で休みたいな。パン屋・カフェ・時計台からは離してね。"}[(int)kind];
         void EnsureWishes()
@@ -31,7 +31,7 @@ namespace PigeonSandbox
             for (int i = 0; i < 3; i++)
             {
                 var kind = (BirdWishKind)i;
-                if (Wishes.Exists(w => w.Kind == kind))
+                if (HasWish(kind))
                     continue;
                 var personality = i == 0 ? Personality.Foodie : i == 1 ? Personality.Bather : Personality.Shy;
                 var bird = Birds.Find(b => b.Personality == personality);
@@ -56,7 +56,22 @@ namespace PigeonSandbox
         }
 
         public bool WishHabitatReady(BirdWish wish) => Facilities.Exists(f => WishPlace(wish.Kind, f));
-        float WishPreference(TownBird bird, Facility place) => Wishes.Exists(w => !w.Complete && w.BirdId == bird.Id && WishPlace(w.Kind, place)) ? 5 : 0;
+        bool HasWish(BirdWishKind kind)
+        {
+            foreach (var w in Wishes)
+                if (w.Kind == kind)
+                    return true;
+            return false;
+        }
+
+        float WishPreference(TownBird bird, Facility place)
+        {
+            foreach (var w in Wishes)
+                if (!w.Complete && w.BirdId == bird.Id && WishPlace(w.Kind, place))
+                    return 5;
+            return 0;
+        }
+
         void TickWishes(float dt)
         {
             EnsureWishes();
@@ -71,7 +86,7 @@ namespace PigeonSandbox
                 {
                     if (wish.Kind == BirdWishKind.FriendlyLunch)
                     {
-                        var friend = Birds.Find(b => b.Id == bird.CompanionId);
+                        var friend = BirdById(bird.CompanionId);
                         visiting = bird.Social == SocialActivity.Resting && friend != null && friend.CompanionId == bird.Id && friend.TargetId == place.Id && FriendshipTime(bird.Id, friend.Id) >= FriendThreshold;
                     }
                     else if (wish.Kind == BirdWishKind.HomeBath)

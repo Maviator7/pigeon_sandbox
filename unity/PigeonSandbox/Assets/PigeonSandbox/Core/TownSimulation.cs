@@ -121,17 +121,24 @@ namespace PigeonSandbox
         readonly float[] plumageClocks = new float[5];
         public static Plumage FeatherOf(TownBird bird) => bird.Rare ? Plumage.White : bird.Plumage;
         public static string FeatherName(Plumage feather) => new[]{"青灰の鳩", "ごま模様の鳩", "茶色い鳩", "白黒まだらの鳩", "白い鳩"}[(int)feather];
-        public bool Discovered(Plumage feather) => Birds.Exists(b => FeatherOf(b) == feather);
+        public bool Discovered(Plumage feather)
+        {
+            foreach (var bird in Birds)
+                if (FeatherOf(bird) == feather)
+                    return true;
+            return false;
+        }
+
         public bool HabitatReady(Plumage feather)
         {
             switch (feather)
             {
                 case Plumage.Checker:
-                    return Facilities.Exists(f => f.Kind == FacilityKind.Plaza && NearKind(f, FacilityKind.Bakery));
+                    return FirstNear(FacilityKind.Plaza, FacilityKind.Bakery) != null;
                 case Plumage.Brown:
-                    return Facilities.Exists(f => f.Kind == FacilityKind.Cafe && NearKind(f, FacilityKind.Bakery));
+                    return FirstNear(FacilityKind.Cafe, FacilityKind.Bakery) != null;
                 case Plumage.Pied:
-                    return Facilities.Exists(f => f.Kind == FacilityKind.Park && NearKind(f, FacilityKind.Tree));
+                    return FirstNear(FacilityKind.Park, FacilityKind.Tree) != null;
                 case Plumage.White:
                     return QuietHabitat();
                 default:
@@ -353,9 +360,45 @@ namespace PigeonSandbox
             return a.Id != b.Id && Distance(a.X - b.X, a.Z - b.Z) <= radius;
         }
 
+        // Hot-path lookups below are plain loops: lambdas here allocated closures on every tick.
         bool NearKind(Facility a, FacilityKind kind)
         {
-            return Facilities.Exists(b => b.Kind == kind && Near(a, b));
+            foreach (var b in Facilities)
+                if (b.Kind == kind && Near(a, b))
+                    return true;
+            return false;
+        }
+
+        Facility FirstNear(FacilityKind kind, FacilityKind neighbor)
+        {
+            foreach (var f in Facilities)
+                if (f.Kind == kind && NearKind(f, neighbor))
+                    return f;
+            return null;
+        }
+
+        Facility FirstOfKind(FacilityKind kind, FacilityKind alternative)
+        {
+            foreach (var f in Facilities)
+                if (f.Kind == kind || f.Kind == alternative)
+                    return f;
+            return null;
+        }
+
+        TownBird BirdById(int id)
+        {
+            foreach (var bird in Birds)
+                if (bird.Id == id)
+                    return bird;
+            return null;
+        }
+
+        bool VisitorNear(TownBird bird, float radius)
+        {
+            foreach (var v in Visitors)
+                if (Distance(v.X - bird.X, v.Z - bird.Z) < radius)
+                    return true;
+            return false;
         }
 
         int Levels(FacilityKind kind)
@@ -367,19 +410,46 @@ namespace PigeonSandbox
             return n;
         }
 
+        // Spreads visitors over every bakery and cafe in list order, without building a temporary list.
+        Facility ShopFor(int visitorId)
+        {
+            int shops = 0;
+            foreach (var f in Facilities)
+                if (f.Kind == FacilityKind.Bakery || f.Kind == FacilityKind.Cafe)
+                    shops++;
+            if (shops == 0)
+                return null;
+            int pick = visitorId % shops;
+            foreach (var f in Facilities)
+                if ((f.Kind == FacilityKind.Bakery || f.Kind == FacilityKind.Cafe) && pick-- == 0)
+                    return f;
+            return null;
+        }
+
         Facility Find(int id)
         {
-            return Facilities.Find(f => f.Id == id);
+            foreach (var f in Facilities)
+                if (f.Id == id)
+                    return f;
+            return null;
         }
 
         public Facility At(int x, int z)
         {
-            return Facilities.Find(f => f.X == x && f.Z == z);
+            foreach (var f in Facilities)
+                if (f.X == x && f.Z == z)
+                    return f;
+            return null;
         }
 
         public bool CanPlace(int x, int z, int ignoreId = -1)
         {
-            return x >= -MapRadius && x <= MapRadius && z >= -MapRadius && z <= MapRadius && !Facilities.Exists(f => f.Id != ignoreId && f.X == x && f.Z == z);
+            if (x < -MapRadius || x > MapRadius || z < -MapRadius || z > MapRadius)
+                return false;
+            foreach (var f in Facilities)
+                if (f.Id != ignoreId && f.X == x && f.Z == z)
+                    return false;
+            return true;
         }
 
         void AddFacility(FacilityKind kind, int x, int z)
@@ -483,7 +553,10 @@ namespace PigeonSandbox
 
         bool QuietHabitat()
         {
-            return Facilities.Exists(h => h.Kind == FacilityKind.Housing && NearKind(h, FacilityKind.Tree) && NearKind(h, FacilityKind.Fountain) && !NearKind(h, FacilityKind.Bakery) && !NearKind(h, FacilityKind.ClockTower));
+            foreach (var h in Facilities)
+                if (h.Kind == FacilityKind.Housing && NearKind(h, FacilityKind.Tree) && NearKind(h, FacilityKind.Fountain) && !NearKind(h, FacilityKind.Bakery) && !NearKind(h, FacilityKind.ClockTower))
+                    return true;
+            return false;
         }
 
         public string RareHint
@@ -743,7 +816,7 @@ namespace PigeonSandbox
                 if (b.Wait > 0)
                 {
                     if (target.Kind == FacilityKind.Cafe)
-                        b.Action = Visitors.Exists(v => Distance(v.X - b.X, v.Z - b.Z) < 2.2f) ? "人と交流" : "テラスで休憩";
+                        b.Action = VisitorNear(b, 2.2f) ? "人と交流" : "テラスで休憩";
                     float px, py, pz;
                     if (Perch(target, b.Id, out px, out py, out pz))
                     {
@@ -771,7 +844,7 @@ namespace PigeonSandbox
                 b.Action = "散歩";
                 if (Walk(ref b.X, ref b.Z, ref b.Heading, tx, tz, .7f + (b.Mayor ? .12f : 0), dt, !airborne))
                 {
-                    b.Action = target.Kind == FacilityKind.Fountain ? "水浴び" : target.Kind == FacilityKind.Bakery ? "食事" : target.Kind == FacilityKind.ClockTower ? "眺める" : target.Kind == FacilityKind.Cafe ? (Visitors.Exists(v => Distance(v.X - b.X, v.Z - b.Z) < 2.2f) ? "人と交流" : "テラスで休憩") : target.Kind == FacilityKind.Park ? (TimeOfDay == TownTimeOfDay.Evening ? "休憩" : b.Id % 2 == 0 ? "羽繕い" : "日向ぼっこ") : "休憩";
+                    b.Action = target.Kind == FacilityKind.Fountain ? "水浴び" : target.Kind == FacilityKind.Bakery ? "食事" : target.Kind == FacilityKind.ClockTower ? "眺める" : target.Kind == FacilityKind.Cafe ? (VisitorNear(b, 2.2f) ? "人と交流" : "テラスで休憩") : target.Kind == FacilityKind.Park ? (TimeOfDay == TownTimeOfDay.Evening ? "休憩" : b.Id % 2 == 0 ? "羽繕い" : "日向ぼっこ") : "休憩";
                     b.Wait = (target.Kind == FacilityKind.Park ? 5 : 2.5f) + (float)random.NextDouble() * 3;
                 }
             }
@@ -785,12 +858,11 @@ namespace PigeonSandbox
                 var target = Find(v.TargetId);
                 if (!v.Bought && target == null)
                 {
-                    var shops = Facilities.FindAll(f => f.Kind == FacilityKind.Bakery || f.Kind == FacilityKind.Cafe);
-                    target = v.Id % 4 == 0 ? Facilities.Find(f => f.Kind == FacilityKind.Park) : null;
-                    if (target == null && shops.Count > 0)
-                        target = shops[v.Id % shops.Count];
+                    target = v.Id % 4 == 0 ? FirstOfKind(FacilityKind.Park, FacilityKind.Park) : null;
                     if (target == null)
-                        target = Facilities.Find(f => f.Kind == FacilityKind.Park || f.Kind == FacilityKind.Plaza);
+                        target = ShopFor(v.Id);
+                    if (target == null)
+                        target = FirstOfKind(FacilityKind.Park, FacilityKind.Plaza);
                     v.TargetId = target == null ? -1 : target.Id;
                 }
 
