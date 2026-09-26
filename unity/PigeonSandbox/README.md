@@ -58,7 +58,7 @@ python3 unity/PigeonSandbox/Tools/format.py --check  # 確認のみ
 目標は、iPhone 15相当で最大マップ（17×17マスすべてに施設、鳩15羽）を60fpsで動かすことです。
 
 - **計測オーバーレイ：** プレイ中にF3で、FPS・フレーム時間・描画呼び出し回数・GC確保量を左下に表示します。描画とGCの値はDevelopment Buildでのみ取得でき、通常ビルドでは `n/a` になります。
-- **ベンチマーク：** `Assets/Scenes/Benchmark.unity` は、施設で埋まった最大マップを毎回同じ配置で作ります（`TownSimulation.CreateBenchmark`）。セーブデータの読み書きはしません。5秒の準備のあと20秒間計測し、3秒ごとに条例を切り替えて施設の建て直しも計測に含めます。フレームレートの上限は外して計測します。
+- **ベンチマーク：** `Assets/Scenes/Benchmark.unity` は、施設で埋まった最大マップを毎回同じ配置で作ります（`TownSimulation.CreateBenchmark`）。セーブデータの読み書きはしません。`-benchmark-no-ui` を付けると画面（IMGUI）を描かずに計測します。5秒の準備のあと20秒間計測し、3秒ごとに条例を切り替えて施設の建て直しも計測に含めます。フレームレートの上限は外して計測します。
 - **実行方法：** **Pigeon Sandbox > Build Mac benchmark** でDevelopment Buildを作り、次のコマンドで実行します。終わるとアプリは自動で終了し、`~/Library/Logs/PigeonSandbox/Pigeon Sandbox/Player.log` に `PIGEON BENCHMARK` 行が残ります。
 
 ```sh
@@ -71,6 +71,10 @@ grep "PIGEON BENCHMARK" ~/Library/Logs/PigeonSandbox/Pigeon\ Sandbox/Player.log
 | 日付 | 変更 | 端末 | 平均FPS | フレーム時間 平均/p99/最大 (ms) | 描画呼び出し | GC確保 平均/最大 (KB/フレーム) |
 | --- | --- | --- | --- | --- | --- | --- |
 | 2026-09-27 | 最適化前（v0.3.0） | Mac（M4 Max） | 104〜111 | 9.0〜9.6 / 18.0 / 44〜51 | 約2,890 | 131 / 425 |
+| 2026-09-27 | 施設の差分更新・共有マテリアル・Coreの確保削減 | Mac（M4 Max） | 116〜118 | 8.5〜8.6 / 17.0 / 22 | 約2,880 | 70 / 151 |
+| 2026-09-27 | 同上、UIなし（`-benchmark-no-ui`） | Mac（M4 Max） | 84〜85 | 11.7〜11.9 / 20〜21 / 29〜31 | 約2,710 | 4.1 / 58 |
+
+UIなしの計測は、GC確保のうち画面（IMGUI）以外が占める分を切り分けるためのものです。フレーム時間は実行ごとの揺れが大きいため、UIのありなしでは比べません。残りのGC確保（約66KB/フレーム）はIMGUIの画面によるもので、UIの作り直しで解消します。
 
 ## リリース
 

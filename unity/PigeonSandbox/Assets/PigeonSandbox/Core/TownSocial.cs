@@ -24,9 +24,18 @@ namespace PigeonSandbox
         float socialClock;
         const float FriendThreshold = 12;
         readonly List<BirdFriendship> friendships = new List<BirdFriendship>();
+        BirdFriendship Bond(int first, int second)
+        {
+            int a = Math.Min(first, second), b = Math.Max(first, second);
+            foreach (var f in friendships)
+                if (f.FirstId == a && f.SecondId == b)
+                    return f;
+            return null;
+        }
+
         public float FriendshipTime(int first, int second)
         {
-            var bond = friendships.Find(f => f.FirstId == Math.Min(first, second) && f.SecondId == Math.Max(first, second));
+            var bond = Bond(first, second);
             return bond == null ? 0 : bond.SharedSeconds;
         }
 
@@ -53,7 +62,7 @@ namespace PigeonSandbox
         void ShareTime(TownBird first, TownBird second, float dt)
         {
             int a = Math.Min(first.Id, second.Id), b = Math.Max(first.Id, second.Id);
-            var bond = friendships.Find(f => f.FirstId == a && f.SecondId == b);
+            var bond = Bond(a, b);
             if (bond == null)
             {
                 bond = new BirdFriendship{FirstId = a, SecondId = b};
@@ -90,7 +99,7 @@ namespace PigeonSandbox
 
         public string ActivityOf(TownBird bird)
         {
-            var companion = Birds.Find(b => b.Id == bird.CompanionId);
+            var companion = BirdById(bird.CompanionId);
             if (companion == null || bird.Social == SocialActivity.None)
                 return bird.Action;
             return companion.Name + (bird.Social == SocialActivity.Walking ? "と散歩中" : bird.Social == SocialActivity.Greeting ? "と再会のクルクル" : bird.Social == SocialActivity.Bathing ? "と水浴び中" : "と休憩中");
@@ -112,8 +121,9 @@ namespace PigeonSandbox
             if (Distance(first.X - x, first.Z - z) > 4 || Distance(second.X - x, second.Z - z) > 4)
                 return false;
             // One pair per destination keeps small parks from becoming a pile of pigeons.
-            if (Birds.Exists(b => b.Social != SocialActivity.None && b.SocialPlaceId == place.Id))
-                return false;
+            foreach (var b in Birds)
+                if (b.Social != SocialActivity.None && b.SocialPlaceId == place.Id)
+                    return false;
             bool greet = FriendshipTime(first.Id, second.Id) >= FriendThreshold && random.NextDouble() < .35;
             BeginCompany(first, second.Id, place, greet);
             BeginCompany(second, first.Id, place, greet);
@@ -156,7 +166,7 @@ namespace PigeonSandbox
             {
                 if (first.Social == SocialActivity.None)
                     continue;
-                var second = Birds.Find(b => b.Id == first.CompanionId);
+                var second = BirdById(first.CompanionId);
                 var place = Find(first.SocialPlaceId);
                 bool resting = first.Social == SocialActivity.Resting || first.Social == SocialActivity.Bathing;
                 if (second == null || second.CompanionId != first.Id || second.Social != first.Social || second.SocialPlaceId != first.SocialPlaceId || place == null || place.X != first.SocialPlaceX || place.Z != first.SocialPlaceZ || (!resting && (first.Y >= .15f || second.Y >= .15f)))

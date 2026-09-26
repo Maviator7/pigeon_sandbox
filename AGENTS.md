@@ -8,7 +8,7 @@
 - C#検証: `python3 unity/PigeonSandbox/Tests/verify.py`（Unityライセンス不要）。Runtime・EditorのC#をすべてコンパイルし、`Tests/*.cs` を実行。
 - C#整形: `python3 unity/PigeonSandbox/Tools/format.py`（`--check` で確認のみ）。Unity同梱のRoslynを使う。
 - Macビルド: Editorメニュー `Pigeon Sandbox > Build Mac app`。バッチ実行は `-executeMethod PigeonSandbox.Editor.BuildMac.Build`。
-- ベンチマーク: `Pigeon Sandbox > Build Mac benchmark`（バッチは `BuildMac.BuildBenchmark`）で `Builds/MacBenchmark/` にDevelopment Buildを作る。`open -W -n "unity/PigeonSandbox/Builds/MacBenchmark/Pigeon Sandbox Benchmark.app" --args -benchmark-quit` で実行し、`~/Library/Logs/PigeonSandbox/Pigeon Sandbox/Player.log` の `PIGEON BENCHMARK` 行を読む。
+- ベンチマーク: `Pigeon Sandbox > Build Mac benchmark`（バッチは `BuildMac.BuildBenchmark`）で `Builds/MacBenchmark/` にDevelopment Buildを作る。`open -W -n "unity/PigeonSandbox/Builds/MacBenchmark/Pigeon Sandbox Benchmark.app" --args -benchmark-quit` で実行し、`~/Library/Logs/PigeonSandbox/Pigeon Sandbox/Player.log` の `PIGEON BENCHMARK` 行を読む。`-benchmark-no-ui` を加えると画面を描かずに計測する（zshでは引数を1つずつ書く）。
 - 旧Web試作（参考資料・保守対象外）: `npm install`、`npm run dev`、`npm run build`、`npm test`。
 
 ## 構成と規約

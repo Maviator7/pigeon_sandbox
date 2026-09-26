@@ -143,16 +143,8 @@ namespace PigeonSandbox
             }
         }
 
-        private static Material Material(string name, string hex, float smoothness = .13f, float metallic = 0)
-        {
-            ColorUtility.TryParseHtmlString("#" + hex, out var color);
-            var material = new Material(Shader.Find("Standard"))
-            {name = name, color = color};
-            material.SetFloat("_Glossiness", smoothness);
-            material.SetFloat("_Metallic", metallic);
-            return material;
-        }
-
+        // Names document each part's colour; materials are shared through MaterialCache.
+        private static Material Material(string name, string hex, float smoothness = .13f, float metallic = 0) => MaterialCache.Get(hex, smoothness, metallic);
         private static Transform Shape(string name, PrimitiveType type, Transform parent, Vector3 position, Vector3 scale, Material material)
         {
             var obj = GameObject.CreatePrimitive(type);
@@ -163,7 +155,7 @@ namespace PigeonSandbox
             obj.GetComponent<Renderer>().sharedMaterial = material;
             var collider = obj.GetComponent<Collider>();
             if (collider != null)
-                Destroy(collider);
+                MaterialCache.Release(collider);
             return obj.transform;
         }
 

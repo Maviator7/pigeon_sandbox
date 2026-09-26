@@ -9,6 +9,8 @@ namespace PigeonSandbox
         // Set by the generated Benchmark scene: a full, unsaved town with the performance overlay and runner.
         [SerializeField]
         bool benchmark;
+        // -benchmark-no-ui measures the world alone; the IMGUI panels are due to be rebuilt.
+        bool hideUi;
         TownSimulation town;
         TownWorld world;
         Camera view;
@@ -67,6 +69,7 @@ namespace PigeonSandbox
             if (benchmark)
             {
                 town = TownSimulation.CreateBenchmark();
+                hideUi = Array.IndexOf(Environment.GetCommandLineArgs(), "-benchmark-no-ui") >= 0;
                 message = "ベンチマーク用の街です。変更は保存されません。";
             }
             else
@@ -343,7 +346,7 @@ namespace PigeonSandbox
         void UpdateCamera(float deltaTime)
         {
             float blend = 1 - Mathf.Exp(-8 * Mathf.Max(0, deltaTime));
-            var bird = town.Birds.Find(b => b.Id == followedBird);
+            var bird = town.BirdById(followedBird);
             if (bird != null)
                 cameraFocus = Vector3.Lerp(cameraFocus, new Vector3(bird.X, bird.Y + .4f, bird.Z), blend);
             else
@@ -605,7 +608,7 @@ namespace PigeonSandbox
 
         void OnGUI()
         {
-            if (town == null)
+            if (town == null || hideUi)
                 return;
             Styles();
             float w = Width, h = Height;

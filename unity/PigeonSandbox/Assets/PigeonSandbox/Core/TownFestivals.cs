@@ -84,7 +84,7 @@ namespace PigeonSandbox
         {
             FacilityKind main = kind == FestivalKind.BakeryMarket ? FacilityKind.Bakery : kind == FestivalKind.WatersideDay ? FacilityKind.Fountain : FacilityKind.ClockTower;
             FacilityKind neighbor = kind == FestivalKind.WatersideDay ? FacilityKind.Park : FacilityKind.Plaza;
-            return Facilities.Find(f => f.Kind == main && NearKind(f, neighbor));
+            return FirstNear(main, neighbor);
         }
 
         public bool FestivalVenueReady(FestivalKind kind)
@@ -140,7 +140,7 @@ namespace PigeonSandbox
                 bool atMain = FestivalVenueReadyAt(target, festival.Kind);
                 if (atMain && (festival.Kind != FestivalKind.ClockEvening || TimeOfDay == TownTimeOfDay.Evening) && MainAction(bird, festival.Kind) && !festival.MainBirdIds.Contains(bird.Id))
                     festival.MainBirdIds.Add(bird.Id);
-                if (festival.Kind == FestivalKind.WatersideDay && target.Kind == FacilityKind.Park && Facilities.Exists(f => f.Kind == FacilityKind.Fountain && Near(f, target)) && (bird.Action == "羽繕い" || bird.Action == "日向ぼっこ" || bird.Action == "休憩") && !festival.PartnerBirdIds.Contains(bird.Id))
+                if (festival.Kind == FestivalKind.WatersideDay && target.Kind == FacilityKind.Park && NearKind(target, FacilityKind.Fountain) && (bird.Action == "羽繕い" || bird.Action == "日向ぼっこ" || bird.Action == "休憩") && !festival.PartnerBirdIds.Contains(bird.Id))
                     festival.PartnerBirdIds.Add(bird.Id);
             }
 
