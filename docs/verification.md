@@ -1,4 +1,6 @@
-# 検証記録
+# 検証記録（旧Web試作）
+
+> この記録は初期のブラウザ版（`src/`）のものです。現在のUnity版の検証方法は [Unity版README](../unity/PigeonSandbox/README.md#検証) を参照してください。
 
 最終確認: 2026-09-10
 

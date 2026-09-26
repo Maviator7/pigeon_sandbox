@@ -8,5 +8,8 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Park.unity
     guid: fe9a164a49e0c4e10a2ff8920ddede11
+  - enabled: 0
+    path: Assets/Scenes/Benchmark.unity
+    guid: fb5d269c0f1a14909aa0fcd1ab7b27b2
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0

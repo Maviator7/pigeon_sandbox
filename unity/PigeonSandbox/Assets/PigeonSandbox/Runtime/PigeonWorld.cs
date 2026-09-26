@@ -2,74 +2,47 @@ using UnityEngine;
 
 namespace PigeonSandbox
 {
-    /// <summary>Asset-free, smooth pigeon and a quiet park. Forward is positive Z.</summary>
+    /// <summary>Asset-free procedural pigeon built from primitives. Forward is positive Z.</summary>
     public sealed class PigeonWorld : MonoBehaviour
     {
-        public Transform Bird { get; private set; }
-        private Transform torso, neck, leftWing, rightWing, leftFoot, rightFoot;
-        private Material seedMaterial;
-        private bool initialized;
-
-        public void InitializeBirdOnly(bool white, bool mayor, Plumage feather=Plumage.Blue)
+        public Transform Bird
         {
-            if (initialized) return;
+            get;
+            private set;
+        }
+
+        private Transform torso, neck, leftWing, rightWing, leftFoot, rightFoot;
+        private bool initialized;
+        public void Initialize(bool white, bool mayor, Plumage feather = Plumage.Blue)
+        {
+            if (initialized)
+                return;
             initialized = true;
             CreateBird();
-            if(white)feather=Plumage.White;
-            foreach(var renderer in Bird.GetComponentsInChildren<Renderer>())
+            if (white)
+                feather = Plumage.White;
+            foreach (var renderer in Bird.GetComponentsInChildren<Renderer>())
             {
-                string part=renderer.gameObject.name;
-                bool wing=part=="Folded wing", body=part=="Pear shaped breast"||part=="Soft chest", head=part=="Round head", dark=part=="Broad wing bar"||part=="Flight tip"||part=="Smooth tail";
-                string hex=null;
-                if(feather==Plumage.White&&(wing||body||head))hex="EFE9D8";
-                if(feather==Plumage.Brown)hex=wing?"BE9471":body?"9C755E":head?"785848":dark?"594638":null;
-                if(feather==Plumage.Checker)hex=wing?"586470":body?"788490":dark?"303B47":null;
-                if(feather==Plumage.Pied)hex=wing||body?"EEEDE3":head||dark?"303B47":null;
-                if(hex!=null)renderer.sharedMaterial=Material("Plumage "+feather,hex);
+                string part = renderer.gameObject.name;
+                bool wing = part == "Folded wing", body = part == "Pear shaped breast" || part == "Soft chest", head = part == "Round head", dark = part == "Broad wing bar" || part == "Flight tip" || part == "Smooth tail";
+                string hex = null;
+                if (feather == Plumage.White && (wing || body || head))
+                    hex = "EFE9D8";
+                if (feather == Plumage.Brown)
+                    hex = wing ? "BE9471" : body ? "9C755E" : head ? "785848" : dark ? "594638" : null;
+                if (feather == Plumage.Checker)
+                    hex = wing ? "586470" : body ? "788490" : dark ? "303B47" : null;
+                if (feather == Plumage.Pied)
+                    hex = wing || body ? "EEEDE3" : head || dark ? "303B47" : null;
+                if (hex != null)
+                    renderer.sharedMaterial = Material("Plumage " + feather, hex);
             }
+
             if (mayor)
             {
                 var gold = Material("Mayor gold", "D4AA50");
-                Shape("Mayor medallion", PrimitiveType.Sphere, Bird, new Vector3(0,1.12f,.53f), new Vector3(.16f,.18f,.045f), gold);
+                Shape("Mayor medallion", PrimitiveType.Sphere, Bird, new Vector3(0, 1.12f, .53f), new Vector3(.16f, .18f, .045f), gold);
             }
-        }
-
-        public void Initialize()
-        {
-            if (initialized) return;
-            initialized = true;
-            var grass = Material("Sage lawn", "849780");
-            var sand = Material("Warm limestone", "D6CFB9");
-            var stone = Material("Stone edge", "B1B7A1");
-            var wood = Material("Oak", "967456");
-            var metal = Material("Forest green steel", "354E46");
-            var leaves = Material("Soft foliage", "627E67");
-            var leavesLight = Material("Sunlit foliage", "8DAB7A");
-            var bark = Material("Tree bark", "736250");
-            seedMaterial = Material("Grain", "E6BD71");
-
-            Shape("Lawn", PrimitiveType.Cylinder, transform, new Vector3(0, -.24f, 0), new Vector3(28, .2f, 28), grass);
-            Shape("Promenade border", PrimitiveType.Cylinder, transform, new Vector3(0, -.13f, 0), new Vector3(16.4f, .1f, 16.4f), stone);
-            Shape("Quiet walking court", PrimitiveType.Cylinder, transform, new Vector3(0, -.06f, 0), new Vector3(16, .06f, 16), sand);
-            for (int i = 0; i < 7; i++)
-            {
-                float a = (i * 47 + 22) * Mathf.Deg2Rad;
-                var position = new Vector3(Mathf.Cos(a) * 10.6f, 0, Mathf.Sin(a) * 10.6f);
-                var tree = new GameObject("Park tree").transform;
-                tree.SetParent(transform, false);
-                tree.localPosition = position;
-                Shape("Trunk", PrimitiveType.Cylinder, tree, new Vector3(0, 1.6f, 0), new Vector3(.38f, 1.65f, .38f), bark);
-                Shape("Crown", PrimitiveType.Sphere, tree, new Vector3(0, 3.55f, 0), new Vector3(2.6f, 3.1f, 2.5f), i % 2 == 0 ? leaves : leavesLight);
-                Shape("Crown lobe", PrimitiveType.Sphere, tree, new Vector3(.65f, 3.35f, .2f), new Vector3(1.8f, 2.2f, 1.8f), leaves);
-            }
-            Bench(new Vector3(-5.9f, 0, 6.7f), -35, wood, metal);
-            Bench(new Vector3(5.7f, 0, 6.7f), 35, wood, metal);
-            var basin = new GameObject("Bird bath").transform;
-            basin.SetParent(transform, false);
-            basin.localPosition = new Vector3(-8.5f, 0, -2.7f);
-            Shape("Bath base", PrimitiveType.Cylinder, basin, new Vector3(0, .18f, 0), new Vector3(2.4f, .18f, 2.4f), stone);
-            Shape("Still water", PrimitiveType.Cylinder, basin, new Vector3(0, .365f, 0), new Vector3(2.05f, .015f, 2.05f), Material("Water", "85AFAD", .55f));
-            CreateBird();
         }
 
         private void CreateBird()
@@ -101,7 +74,7 @@ namespace PigeonSandbox
             var beak = Shape("Beak", PrimitiveType.Sphere, neck, new Vector3(0, .414f, .34f), new Vector3(.13f, .105f, .30f), black);
             beak.localRotation = Quaternion.Euler(16, 0, 0);
             Shape("Cere", PrimitiveType.Sphere, neck, new Vector3(0, .47f, .294f), new Vector3(.14f, .088f, .135f), white);
-            foreach (int side in new[] { -1, 1 })
+            foreach (int side in new[]{-1, 1})
             {
                 Shape("Eye rim", PrimitiveType.Sphere, neck, new Vector3(side * .194f, .514f, .137f), new Vector3(.028f, .094f, .094f), gray);
                 Shape("Amber eye", PrimitiveType.Sphere, neck, new Vector3(side * .21f, .514f, .14f), new Vector3(.023f, .072f, .072f), orange);
@@ -117,6 +90,7 @@ namespace PigeonSandbox
                     var stripe = Shape("Broad wing bar", PrimitiveType.Sphere, pivot, new Vector3(side * .205f, -.16f, -.2f - bar * .17f), new Vector3(.025f, .45f - bar * .075f, .09f), dark);
                     stripe.localRotation = Quaternion.Euler(-13, 0, 0);
                 }
+
                 var foot = new GameObject(side < 0 ? "Left foot" : "Right foot").transform;
                 foot.SetParent(Bird, false);
                 foot.localPosition = new Vector3(side * .20f, .06f, .10f);
@@ -124,14 +98,23 @@ namespace PigeonSandbox
                 for (int toe = -1; toe <= 1; toe++)
                     Limb("Toe", foot, Vector3.zero, new Vector3(toe * .085f, -.015f, .19f - Mathf.Abs(toe) * .025f), .023f, feet);
                 Limb("Back toe", foot, Vector3.zero, new Vector3(side * .025f, -.015f, -.105f), .022f, feet);
-                if (side < 0) { leftWing = pivot; leftFoot = foot; }
-                else { rightWing = pivot; rightFoot = foot; }
+                if (side < 0)
+                {
+                    leftWing = pivot;
+                    leftFoot = foot;
+                }
+                else
+                {
+                    rightWing = pivot;
+                    rightFoot = foot;
+                }
             }
         }
 
-        public void Animate(float time, float speed, bool flying, bool eating, string activity=null)
+        public void Animate(float time, float speed, bool flying, bool eating, string activity = null)
         {
-            if (!initialized) return;
+            if (!initialized)
+                return;
             float walk = flying || eating ? 0 : Mathf.Clamp01(speed * 1.8f);
             float step = Mathf.Sin(time * 12);
             torso.localPosition = new Vector3(0, Mathf.Abs(step) * .025f * walk + Mathf.Sin(time * 2) * .009f, 0);
@@ -145,50 +128,26 @@ namespace PigeonSandbox
             rightFoot.localRotation = Quaternion.Euler(flying ? -65 : -step * 24 * walk, 0, 0);
             leftFoot.localPosition = new Vector3(-.20f, .06f + Mathf.Max(0, step) * .085f * walk, .10f + step * .07f * walk);
             rightFoot.localPosition = new Vector3(.20f, .06f + Mathf.Max(0, -step) * .085f * walk, .10f - step * .07f * walk);
-            if(!flying&&activity=="羽繕い")
+            if (!flying && activity == "羽繕い")
             {
-                neck.localRotation=Quaternion.Euler(24+Mathf.Sin(time*4)*9,62+Mathf.Sin(time*1.7f)*12,0);
-                rightWing.localRotation=Quaternion.Euler(0,0,12+Mathf.Sin(time*2)*4);
+                neck.localRotation = Quaternion.Euler(24 + Mathf.Sin(time * 4) * 9, 62 + Mathf.Sin(time * 1.7f) * 12, 0);
+                rightWing.localRotation = Quaternion.Euler(0, 0, 12 + Mathf.Sin(time * 2) * 4);
             }
-            else if(!flying&&activity=="日向ぼっこ")
+            else if (!flying && activity == "日向ぼっこ")
             {
-                torso.localPosition+=new Vector3(0,-.045f,0);
-                torso.localRotation=Quaternion.Euler(0,0,-7);
-                neck.localRotation=Quaternion.Euler(-9,Mathf.Sin(time*.5f)*8,5);
-                leftWing.localRotation=Quaternion.Euler(0,0,-16);
-                rightWing.localRotation=Quaternion.Euler(0,0,16);
-            }
-        }
-
-        public GameObject CreateSeed(Vector3 pos)
-        {
-            var seed = Shape("Grain", PrimitiveType.Sphere, transform, new Vector3(pos.x, .038f, pos.z), new Vector3(.08f, .045f, .12f), seedMaterial);
-            seed.localRotation = Quaternion.Euler(0, pos.x * 137 + pos.z * 73, 0);
-            return seed.gameObject;
-        }
-
-        private void Bench(Vector3 position, float yaw, Material wood, Material metal)
-        {
-            var bench = new GameObject("Resting bench").transform;
-            bench.SetParent(transform, false);
-            bench.localPosition = position;
-            bench.localRotation = Quaternion.Euler(0, yaw, 0);
-            for (int i = 0; i < 3; i++)
-            {
-                Shape("Seat slat", PrimitiveType.Cube, bench, new Vector3(0, .67f, i * .19f), new Vector3(2.4f, .1f, .16f), wood);
-                Shape("Back slat", PrimitiveType.Cube, bench, new Vector3(0, .96f + i * .19f, .47f), new Vector3(2.4f, .15f, .08f), wood);
-            }
-            foreach (int side in new[] { -1, 1 })
-            {
-                Shape("Bench leg", PrimitiveType.Cube, bench, new Vector3(side * .85f, .32f, .19f), new Vector3(.09f, .64f, .5f), metal);
-                Shape("Back support", PrimitiveType.Cube, bench, new Vector3(side * .85f, 1.02f, .52f), new Vector3(.07f, .8f, .07f), metal);
+                torso.localPosition += new Vector3(0, -.045f, 0);
+                torso.localRotation = Quaternion.Euler(0, 0, -7);
+                neck.localRotation = Quaternion.Euler(-9, Mathf.Sin(time * .5f) * 8, 5);
+                leftWing.localRotation = Quaternion.Euler(0, 0, -16);
+                rightWing.localRotation = Quaternion.Euler(0, 0, 16);
             }
         }
 
         private static Material Material(string name, string hex, float smoothness = .13f, float metallic = 0)
         {
             ColorUtility.TryParseHtmlString("#" + hex, out var color);
-            var material = new Material(Shader.Find("Standard")) { name = name, color = color };
+            var material = new Material(Shader.Find("Standard"))
+            {name = name, color = color};
             material.SetFloat("_Glossiness", smoothness);
             material.SetFloat("_Metallic", metallic);
             return material;
@@ -203,7 +162,8 @@ namespace PigeonSandbox
             obj.transform.localScale = scale;
             obj.GetComponent<Renderer>().sharedMaterial = material;
             var collider = obj.GetComponent<Collider>();
-            if (collider != null) Destroy(collider);
+            if (collider != null)
+                Destroy(collider);
             return obj.transform;
         }
 

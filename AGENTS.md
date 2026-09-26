@@ -1,27 +1,28 @@
 # Pigeon Sandbox
 
-写真を参考にした仮モデルと、描画非依存AIによる3D鳩シミュレーター。
+鳩と人が暮らす街をつくる、Unity製の箱庭ゲーム「鳩市長の街づくり」。現在の開発対象はUnity版（macOS。iOSは準備中）。
 
 ## コマンド
 
-- npm install
-- npm run dev
-- npm run build
-- npm test
-- Unity版: `unity/PigeonSandbox` をUnity 6000.3.11f1で開く。初回にParkシーンを生成。
-- Unity版ビルド: Editorメニュー `Pigeon Sandbox > Build Mac app`。
-- Unity版C#検証: `python3 unity/PigeonSandbox/Tests/verify.py`（Unityライセンス不要）。
+- Unity版: `unity/PigeonSandbox` をUnity 6000.3.11f1で開く。`Assets/Scenes/Park.unity` がなければ初回に生成。
+- C#検証: `python3 unity/PigeonSandbox/Tests/verify.py`（Unityライセンス不要）。Runtime・EditorのC#をすべてコンパイルし、`Tests/*.cs` を実行。
+- C#整形: `python3 unity/PigeonSandbox/Tools/format.py`（`--check` で確認のみ）。Unity同梱のRoslynを使う。
+- Macビルド: Editorメニュー `Pigeon Sandbox > Build Mac app`。バッチ実行は `-executeMethod PigeonSandbox.Editor.BuildMac.Build`。
+- ベンチマーク: `Pigeon Sandbox > Build Mac benchmark`（バッチは `BuildMac.BuildBenchmark`）で `Builds/MacBenchmark/` にDevelopment Buildを作る。`open -W -n "unity/PigeonSandbox/Builds/MacBenchmark/Pigeon Sandbox Benchmark.app" --args -benchmark-quit` で実行し、`~/Library/Logs/PigeonSandbox/Pigeon Sandbox/Player.log` の `PIGEON BENCHMARK` 行を読む。
+- 旧Web試作（参考資料・保守対象外）: `npm install`、`npm run dev`、`npm run build`、`npm test`。
 
 ## 構成と規約
 
-- src/simulation: Three.js/ReactをimportしないAI・移動。乱数は注入する。
-- src/components: R3F描画、パーツアニメーション、UI。
-- src/stores: 操作指示、餌、5Hzの観察スナップショット。
-- tests: AI・一連の行動のVitestテスト。
-- TypeScript strict。毎フレームのReact state更新は禁止。
+- `unity/PigeonSandbox/Assets/PigeonSandbox/Core`: Unity非依存のC#。街・鳩・来訪者の行動、お願い、お祭り、保存、ベンチマーク用の街。乱数は注入する。
+- `unity/PigeonSandbox/Assets/PigeonSandbox/Runtime`: 手続き生成の3Dモデル、マップ、入力、IMGUIの画面、計測オーバーレイ（F3）とベンチマーク実行。
+- `unity/PigeonSandbox/Assets/PigeonSandbox/Editor`: ビルド、シーン生成、Unity内での検証。
+- `unity/PigeonSandbox/Tests`: Coreのテスト。新しいファイルは `verify.py` が自動で拾う。エントリは `TownChecks.Main`。
+- `unity/PigeonSandbox/Tools`: 開発用スクリプト（Unityのビルド対象外）。
+- 旧Web試作（`src/`、`tests/`、`public/`、`docs/model-guide.md`、`docs/verification.md`）は参考資料として残し、変更しない。
+- C#は `Tools/format.py` の書式に揃える。Coreの変更にはテストを添える。
+- 性能目標: iPhone 15相当、最大マップ（17×17・鳩15羽）で60fps。性能に関わる変更はベンチマークの前後比較を残す。
+- ビルドでシーンや `ProjectSettings` に差分を出さない（シーンは存在しないときだけ生成）。
 - モデル・音素材がなくても動作を維持する。
+- 鳩を観察し、個体差や行動を楽しむ平和なゲーム。鳩に危害を加えるイベントは実装しない。
 - 個人プロジェクト。エージェント定義はホーム側を使用する。
-- コマンドや構成が変わったらこのファイルも更新する。
-- unity/PigeonSandbox/Assets/PigeonSandbox/Core: Unity非依存のC# AI。乱数は注入する。
-- unity/PigeonSandbox/Assets/PigeonSandbox/Runtime: 鳩モデル、公園、入力、観察UI。
-- 鳩を観察し、個体差や行動を楽しむ平和なシミュレーター。鳩に危害を加えるイベントは実装しない。
+- コマンドや構成が変わったらこのファイルを更新する（`CLAUDE.md` はこのファイルへのシンボリックリンク）。
