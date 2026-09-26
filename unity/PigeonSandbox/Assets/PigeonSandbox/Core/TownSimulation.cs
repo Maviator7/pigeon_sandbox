@@ -31,6 +31,8 @@ namespace PigeonSandbox
         // Heading and CheerTurn are both degrees. The cheerful turn is visual only.
         public float X,Y,Z,Heading;
         [NonSerialized] public float CheerTurn;
+        // True only while settled on a tree or clock tower; airborne travel stays false.
+        [NonSerialized] public bool Perched;
         internal float CheerRemaining;
         [NonSerialized] internal bool WishThanksPending;
         [NonSerialized] public int CompanionId=-1;
@@ -490,14 +492,23 @@ namespace PigeonSandbox
             x=f.X*CellSize+(float)Math.Cos(angle)*.96f;
             z=f.Z*CellSize+(float)Math.Sin(angle)*.96f;
         }
-        bool Walk(ref float x,ref float z,ref float heading,float tx,float tz,float speed,float dt)
+        // Perches sit on top of the tree canopy and the clock tower cap, matching TownWorld's models.
+        static bool Perch(Facility f,int id,out float x,out float y,out float z)
+        {
+            float angle=(id%4)*(float)Math.PI*.5f;
+            x=f.X*CellSize+(float)Math.Cos(angle)*.3f;
+            z=f.Z*CellSize+(float)Math.Sin(angle)*.3f;
+            y=f.Kind==FacilityKind.Tree?2.45f:f.Kind==FacilityKind.ClockTower?2.98f:0;
+            return y>0;
+        }
+        bool Walk(ref float x,ref float z,ref float heading,float tx,float tz,float speed,float dt,bool avoid=true)
         {
             float dx=tx-x,dz=tz-z,d=Distance(dx,dz);
             if(d<.08f)return true;
             heading=(float)(Math.Atan2(dx,dz)*180/Math.PI);
             float step=Math.Min(d,speed*dt);
             float nx=x+dx/d*step,nz=z+dz/d*step;
-            foreach(var f in Facilities)
+            if(avoid)foreach(var f in Facilities)
             {
                 float ox=nx-f.X*CellSize,oz=nz-f.Z*CellSize;
                 float dist=Distance(ox,oz);
@@ -590,6 +601,8 @@ namespace PigeonSandbox
                 }
                 if(target==null)
                 {
+                    b.Perched=false;
+                    b.Y*=Math.Max(0,1-dt*4);
                     b.Action="散歩";
                     continue;
                 }
@@ -598,12 +611,22 @@ namespace PigeonSandbox
                 if(b.Wait>0)
                 {
                     if(target.Kind==FacilityKind.Cafe)b.Action=Visitors.Exists(v=>Distance(v.X-b.X,v.Z-b.Z)<2.2f)?"人と交流":"テラスで休憩";
-                    b.Y+=( ((target.Kind==FacilityKind.Tree||target.Kind==FacilityKind.ClockTower)?1.6f:0)-b.Y)*Math.Min(1,dt*3);
+                    float px,py,pz;
+                    if(Perch(target,b.Id,out px,out py,out pz))
+                    {
+                        float blend=Math.Min(1,dt*3);
+                        b.X+=(px-b.X)*blend;b.Y+=(py-b.Y)*blend;b.Z+=(pz-b.Z)*blend;
+                        if(Distance(px-b.X,pz-b.Z)+Math.Abs(py-b.Y)<.05f){b.X=px;b.Y=py;b.Z=pz;b.Perched=true;}
+                    }
+                    else b.Y*=Math.Max(0,1-dt*4);
                     continue;
                 }
+                b.Perched=false;
+                // Birds still in the air glide over buildings; obstacle avoidance applies on the ground.
+                bool airborne=b.Y>.15f;
                 b.Y*=Math.Max(0,1-dt*4);
                 b.Action="散歩";
-                if(Walk(ref b.X,ref b.Z,ref b.Heading,tx,tz,.7f+(b.Mayor?.12f:0),dt))
+                if(Walk(ref b.X,ref b.Z,ref b.Heading,tx,tz,.7f+(b.Mayor?.12f:0),dt,!airborne))
                 {
                     b.Action=target.Kind==FacilityKind.Fountain?"水浴び":target.Kind==FacilityKind.Bakery?"食事":target.Kind==FacilityKind.ClockTower?"眺める":target.Kind==FacilityKind.Cafe?(Visitors.Exists(v=>Distance(v.X-b.X,v.Z-b.Z)<2.2f)?"人と交流":"テラスで休憩"):target.Kind==FacilityKind.Park?(TimeOfDay==TownTimeOfDay.Evening?"休憩":b.Id%2==0?"羽繕い":"日向ぼっこ"):"休憩";
                     b.Wait=(target.Kind==FacilityKind.Park?5:2.5f)+(float)random.NextDouble()*3;

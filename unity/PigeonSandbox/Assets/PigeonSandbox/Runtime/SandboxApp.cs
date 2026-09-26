@@ -9,6 +9,7 @@ namespace PigeonSandbox
   GUIStyle title,heading,text,small,button,marker,nameInput;
   float yaw=35,pitch=48,zoom=14,saveClock;
   int speed=1,selected=-1,tab;
+  bool paused;
   FacilityKind building=FacilityKind.Bakery;
   enum Tool { Inspect,Build,Move }
   Tool tool=Tool.Build;
@@ -234,7 +235,7 @@ namespace PigeonSandbox
   }
   void Update()
   {
-   if(editingBird<0&&Input.GetKeyDown(KeyCode.Space)) speed=speed==0?1:0;
+   if(editingBird<0&&Input.GetKeyDown(KeyCode.Space)) paused=!paused;
    if(editingBird<0)
    {
     if(Input.GetKeyDown(KeyCode.Escape)) { StopFollowing(); tool=Tool.Inspect; selected=-1; }
@@ -243,7 +244,7 @@ namespace PigeonSandbox
    else { pointerInTown=false; dragged=false; }
    UpdateCamera(UnityEngine.Time.unscaledDeltaTime); bool hover=GridPoint(Input.mousePosition,out int hx,out int hz);
    world.Preview(hx,hz,hover&&!(pointerInTown&&dragged)&&tool!=Tool.Inspect,town.CanPlace(hx,hz,tool==Tool.Move?selected:-1)&&(tool!=Tool.Build||town.Money>=TownSimulation.Cost(building)));
-   for(int i=0;i<speed;i++) town.Tick(Mathf.Min(UnityEngine.Time.deltaTime,.1f)); world.Sync(town,speed==0); UpdateDaylight();
+   if(!paused) for(int i=0;i<speed;i++) town.Tick(Mathf.Min(UnityEngine.Time.deltaTime,.1f)); world.Sync(town,paused); UpdateDaylight();
    saveClock+=UnityEngine.Time.unscaledDeltaTime; if(saveClock>=30) { Save(false); saveClock=0; }
   }
   void Save(bool notify)
@@ -320,8 +321,9 @@ namespace PigeonSandbox
    float residentBottom=FlowLabel(residentX,18,210,"住民 "+town.Birds.Count+"羽 / 来訪 "+town.Visitors.Count+"人",text);
    FlowLabel(residentX,residentBottom,210,"DAY "+town.Day+" · "+town.TimeOfDayName+" · 購買 "+town.Purchases+"回",small);
    float speedW=104,pauseW=94,controlGap=10,speedX=w-24-speedW,pauseX=speedX-controlGap-pauseW;
-   if(Button(new Rect(pauseX,25,pauseW,45),speed==0?"再開":"一時停止",speed==0)) speed=speed==0?1:0;
-   if(Button(new Rect(speedX,25,speedW,45),"速度 ×"+(speed==0?1:speed))) speed=speed>=3?1:3;
+   if(Button(new Rect(pauseX,25,pauseW,45),paused?"再開":"一時停止",paused)) paused=!paused;
+   // Speed is remembered separately so changing it never resumes a paused town.
+   if(Button(new Rect(speedX,25,speedW,45),"速度 ×"+speed)) speed=speed>=3?1:3;
    LeftPanel(l); RightPanel(l); BottomPanel(l); FocusMarker(); CameraControls();
   }
   void LeftPanel(UiLayout l)
@@ -352,7 +354,7 @@ namespace PigeonSandbox
    string expansion=town.CanExpand?"土地を広げる ¥"+town.ExpansionCost+"\n＋"+((town.MapSize+2)*(town.MapSize+2)-town.MapSize*town.MapSize)+"マス（外周1マス）":"最大まで拡張しました";
    if(Button(new Rect(x,r.yMax-130,w,62),expansion,false,town.CanExpand&&town.Money>=town.ExpansionCost)&&town.ExpandTown())
    {
-    CancelRename(); ResetCamera(); world.Sync(town,speed==0); message=town.Notice; Save(false);
+    CancelRename(); ResetCamera(); world.Sync(town,paused); message=town.Notice; Save(false);
    }
    if(Button(new Rect(x,r.y+r.height-58,w,40),"街を保存")) Save(true);
   }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using PigeonSandbox;
 public static class TownChecks {
  static void Check(bool value,string name){if(!value)throw new Exception(name); Console.WriteLine("PASS: "+name);}
@@ -102,5 +103,38 @@ public static class TownChecks {
  }
  Check(morningMeals>0&&noonBaths>0&&eveningRests>morningRests,"daily routines retain food bathing and evening rest choices");
  }
- public static void Main(){RunAll();SocialChecks.RunAll();FeatherChecks();DaylightChecks();WishChecks.RunAll();}
+ static void PerchChecks(){
+ var t=new TownSimulation(3);t.Money=5000;t.Build(FacilityKind.ClockTower,2,2);t.Build(FacilityKind.Tree,-3,3);t.Build(FacilityKind.Housing,3,-3);
+ var last=new Dictionary<int,float[]>();int perchedSamples=0;bool hovering=false,offStructure=false,airborneJump=false;
+ for(int i=0;i<6000;i++)
+ {
+  t.Tick(.1f);
+  foreach(var b in t.Birds)
+  {
+   if(last.TryGetValue(b.Id,out var p))
+   {
+    float horizontal=(float)Math.Sqrt((b.X-p[0])*(b.X-p[0])+(b.Z-p[2])*(b.Z-p[2])),moved=horizontal+Math.Abs(b.Y-p[1]);
+    if(moved<1e-4f&&b.Y>.15f&&b.Social==SocialActivity.None&&!b.Perched)hovering=true;
+    if(p[1]>.15f&&b.Y>.15f&&horizontal>.2f)airborneJump=true;
+   }
+   if(b.Perched)
+   {
+    perchedSamples++;var f=t.Facilities.Find(x=>x.Id==b.TargetId);
+    if(f==null||(f.Kind!=FacilityKind.Tree&&f.Kind!=FacilityKind.ClockTower)||b.Y<2||Math.Sqrt(Math.Pow(b.X-f.X*TownSimulation.CellSize,2)+Math.Pow(b.Z-f.Z*TownSimulation.CellSize,2))>.4)offStructure=true;
+   }
+   last[b.Id]=new[]{b.X,b.Y,b.Z};
+  }
+ }
+ Check(perchedSamples>0,"birds perch on trees and clock towers");
+ Check(!hovering,"resting birds never hover in mid-air beside structures");
+ Check(!offStructure,"perched birds sit on top of their structure");
+ Check(!airborneJump,"airborne birds glide without teleporting");
+ var alone=new TownSimulation(3);alone.Money=5000;alone.Build(FacilityKind.ClockTower,2,2);var bird=alone.Birds[0];
+ for(int i=0;i<3000&&!bird.Perched;i++){bird.TargetId=alone.At(2,2).Id;bird.Decision=100;alone.Tick(.1f);}
+ Check(bird.Perched,"bird reaches clock tower perch");
+ foreach(var f in alone.Facilities.ToArray())alone.Remove(f.Id);
+ for(int i=0;i<30;i++)alone.Tick(.1f);
+ Check(!bird.Perched&&bird.Y<.15f,"removing every facility brings perched birds down");
+ }
+ public static void Main(){RunAll();SocialChecks.RunAll();FeatherChecks();DaylightChecks();WishChecks.RunAll();PerchChecks();}
 }
