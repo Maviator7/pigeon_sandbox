@@ -34,13 +34,16 @@
 Unity **6000.3.11f1**で [`unity/PigeonSandbox`](unity/PigeonSandbox) を開き、`Assets/Scenes/Park.unity` を再生します。MacアプリはEditorメニュー **Pigeon Sandbox > Build Mac app** で生成できます。詳しい手順と検証方法は[Unity版README](unity/PigeonSandbox/README.md)にあります。
 
 ```bash
-python3 unity/PigeonSandbox/Tests/verify.py
+python3 unity/PigeonSandbox/Tests/verify.py      # C#のコンパイルとテスト
+python3 unity/PigeonSandbox/Tools/format.py      # C#の整形
 ```
+
+最大マップでの性能を測るベンチマークと計測オーバーレイ（F3）もあります。使い方は[Unity版README](unity/PigeonSandbox/README.md#パフォーマンス計測)を参照してください。
 
 `unity/PigeonSandbox/Assets/PigeonSandbox/Core` はUnityの描画に依存しない街・鳩の行動と保存、`Runtime` は3Dモデル・入力・画面表示です。鳩や建物は外部モデルがなくても表示できる簡略モデルです。スマートフォン版は将来対応を想定していますが、現在配布しているのはMac版です。
 
-## 旧Web試作
+## 旧Web試作（参考資料）
 
-リポジトリ直下の `src/` は初期のブラウザ用3D鳩シミュレーターです。現在の街づくりゲームとは内容が異なります。試作をローカルで動かす場合はNode.js 22以降で `npm install`、`npm run dev` を使用します。Web試作のテストは `npm test` です。
+リポジトリ直下の `src/`・`tests/`・`public/` は、初期のブラウザ用3D鳩シミュレーターです。現在の街づくりゲームとは内容が異なり、**参考資料として残しているだけで保守していません**。依存パッケージの更新や不具合修正も行いません。試作をローカルで動かす場合は、Node.js 22以降で `npm install`、`npm run dev` を使用します（テストは `npm test`）。
 
 利用したNoto Sans JPのライセンスは、配布ZIPに同梱しています。
