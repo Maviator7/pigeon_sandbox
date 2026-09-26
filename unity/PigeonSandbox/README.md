@@ -8,6 +8,8 @@ Unity **6000.3.11f1**で開発するMac向けの箱庭ゲームです。人と�
 2. シーンを再生成する場合はEditorメニュー **Pigeon Sandbox > Create observation scene** を使います。
 3. **Pigeon Sandbox > Build Mac app** で `Builds/Mac/Pigeon Sandbox.app` を生成します。`Builds` はGitの対象外です。
 
+ビルドは `Park.unity` がないときだけシーンを生成し、Player設定も値が変わるときだけ書き込みます。ビルドしてもシーンや `ProjectSettings` に差分は出ません。
+
 リポジトリのルートからコマンドでもビルドできます。
 
 ```sh
@@ -40,9 +42,35 @@ Unity **6000.3.11f1**で開発するMac向けの箱庭ゲームです。人と�
 python3 unity/PigeonSandbox/Tests/verify.py
 ```
 
-リポジトリのルートで実行すると、Unity付属のC#コンパイラでランタイムを確認し、描画に依存しないシミュレーションのテストを実行します。Editorメニューの **Verify simulation** と **Verify camera controls** も利用できます。Macビルドの生成時にはシミュレーション検証を実行します。
+リポジトリのルートで実行します。Unity付属のC#コンパイラで `Assets` 以下のC#（Runtime・Editor）をすべてコンパイルし、`Tests/` の描画に依存しないテストを実行します。`Tests/` に追加したファイルは自動で対象になり、エントリは `TownChecks.Main` です。Editorメニューの **Verify simulation**（Macビルド時にも実行）と **Verify camera controls** も利用できます。
+
+C#の書式は、Unity同梱のRoslynを使う整形ツールで揃えます。
+
+```sh
+python3 unity/PigeonSandbox/Tools/format.py          # 整形
+python3 unity/PigeonSandbox/Tools/format.py --check  # 確認のみ
+```
 
 `Assets/PigeonSandbox/Core` は描画から独立した街・鳩の行動と保存、`Runtime` は3Dモデル・マップ・入力・UI、`Editor` はビルドと検証です。現在の配布対象はmacOS 12以降（Apple Silicon・Intel）。スマートフォン版のビルド、縦画面、実機操作・性能の検証はまだ行っていません。
+
+## パフォーマンス計測
+
+目標は、iPhone 15相当で最大マップ（17×17マスすべてに施設、鳩15羽）を60fpsで動かすことです。
+
+- **計測オーバーレイ：** プレイ中にF3で、FPS・フレーム時間・描画呼び出し回数・GC確保量を左下に表示します。描画とGCの値はDevelopment Buildでのみ取得でき、通常ビルドでは `n/a` になります。
+- **ベンチマーク：** `Assets/Scenes/Benchmark.unity` は、施設で埋まった最大マップを毎回同じ配置で作ります（`TownSimulation.CreateBenchmark`）。セーブデータの読み書きはしません。5秒の準備のあと20秒間計測し、3秒ごとに条例を切り替えて施設の建て直しも計測に含めます。フレームレートの上限は外して計測します。
+- **実行方法：** **Pigeon Sandbox > Build Mac benchmark** でDevelopment Buildを作り、次のコマンドで実行します。終わるとアプリは自動で終了し、`~/Library/Logs/PigeonSandbox/Pigeon Sandbox/Player.log` に `PIGEON BENCHMARK` 行が残ります。
+
+```sh
+open -W -n "unity/PigeonSandbox/Builds/MacBenchmark/Pigeon Sandbox Benchmark.app" --args -benchmark-quit
+grep "PIGEON BENCHMARK" ~/Library/Logs/PigeonSandbox/Pigeon\ Sandbox/Player.log
+```
+
+### 記録
+
+| 日付 | 変更 | 端末 | 平均FPS | フレーム時間 平均/p99/最大 (ms) | 描画呼び出し | GC確保 平均/最大 (KB/フレーム) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2026-09-27 | 最適化前（v0.3.0） | Mac（M4 Max） | 104〜111 | 9.0〜9.6 / 18.0 / 44〜51 | 約2,890 | 131 / 425 |
 
 ## リリース
 

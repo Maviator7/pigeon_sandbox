@@ -6,6 +6,9 @@ namespace PigeonSandbox
 {
     public sealed class SandboxApp : MonoBehaviour
     {
+        // Set by the generated Benchmark scene: a full, unsaved town with the performance overlay and runner.
+        [SerializeField]
+        bool benchmark;
         TownSimulation town;
         TownWorld world;
         Camera view;
@@ -61,8 +64,17 @@ namespace PigeonSandbox
         {
             Application.targetFrameRate = 60;
             font = Resources.Load<Font>("NotoSansJP");
-            town = new TownSimulation();
-            Load();
+            if (benchmark)
+            {
+                town = TownSimulation.CreateBenchmark();
+                message = "ベンチマーク用の街です。変更は保存されません。";
+            }
+            else
+            {
+                town = new TownSimulation();
+                Load();
+            }
+
             postcardCount = town.Postcards.Count;
             zoom = targetZoom = 14 + town.ExpansionLevel * 3;
             world = new GameObject("Mayor town").AddComponent<TownWorld>();
@@ -87,6 +99,9 @@ namespace PigeonSandbox
             CameraPosition();
             UpdateDaylight();
             world.Sync(town, false);
+            var overlay = gameObject.AddComponent<PerformanceOverlay>();
+            if (benchmark)
+                gameObject.AddComponent<BenchmarkRunner>().Begin(town, overlay);
         }
 
         void UpdateDaylight()
@@ -477,6 +492,8 @@ namespace PigeonSandbox
 
         void Save(bool notify)
         {
+            if (benchmark)
+                return;
             try
             {
                 File.WriteAllText(SavePath, JsonUtility.ToJson(town.Capture(), true));

@@ -384,5 +384,6 @@ public static class TownChecks
         WishChecks.RunAll();
         PerchChecks();
         FestivalChecks.RunAll();
+        BenchmarkChecks.RunAll();
     }
 }

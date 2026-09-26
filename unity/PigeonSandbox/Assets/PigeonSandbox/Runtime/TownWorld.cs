@@ -210,7 +210,7 @@ namespace PigeonSandbox
                     var obj = new GameObject(b.Name);
                     obj.transform.SetParent(transform, false);
                     model = obj.AddComponent<PigeonWorld>();
-                    model.InitializeBirdOnly(b.Rare, b.Mayor, TownSimulation.FeatherOf(b));
+                    model.Initialize(b.Rare, b.Mayor, TownSimulation.FeatherOf(b));
                     model.transform.localScale = Vector3.one * .46f;
                     birds.Add(b.Id, model);
                 }
