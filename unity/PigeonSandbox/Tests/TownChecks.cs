@@ -136,5 +136,5 @@ public static class TownChecks {
  for(int i=0;i<30;i++)alone.Tick(.1f);
  Check(!bird.Perched&&bird.Y<.15f,"removing every facility brings perched birds down");
  }
- public static void Main(){RunAll();SocialChecks.RunAll();FeatherChecks();DaylightChecks();WishChecks.RunAll();PerchChecks();}
+ public static void Main(){RunAll();SocialChecks.RunAll();FeatherChecks();DaylightChecks();WishChecks.RunAll();PerchChecks();FestivalChecks.RunAll();}
 }

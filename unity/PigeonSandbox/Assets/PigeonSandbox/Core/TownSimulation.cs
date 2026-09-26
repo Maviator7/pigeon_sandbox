@@ -68,6 +68,10 @@ namespace PigeonSandbox
         public float Money,Time;
         public int Purchases,ExpansionLevel;
         public bool[] CompletedRequests;
+        public int NextFestivalDay;
+        public FestivalKind SelectedFestival;
+        public TownFestivalState Festival;
+        public List<TownPostcard> Postcards;
     }
     public partial class TownSimulation
     {
@@ -178,7 +182,7 @@ namespace PigeonSandbox
         {
             var save=new TownSave
             {
-                Wishes=CopyWishes(Wishes),Friendships=CopyFriendships(friendships),Money=Money,Time=Time,Purchases=Purchases,ExpansionLevel=ExpansionLevel,NestBoxes=NestBoxes,BathPriority=BathPriority,CafeSupport=CafeSupport,CompletedRequests=new bool[Requests.Count]
+                Wishes=CopyWishes(Wishes),Friendships=CopyFriendships(friendships),Money=Money,Time=Time,Purchases=Purchases,ExpansionLevel=ExpansionLevel,NestBoxes=NestBoxes,BathPriority=BathPriority,CafeSupport=CafeSupport,CompletedRequests=new bool[Requests.Count],NextFestivalDay=NextFestivalDay,SelectedFestival=SelectedFestival,Festival=CopyFestival(),Postcards=CopyPostcards(Postcards)
             }
             ;
             foreach(var f in Facilities)save.Facilities.Add(new Facility
@@ -211,7 +215,7 @@ namespace PigeonSandbox
                 if(b==null||b.Id<1||!ids.Add(b.Id)||!Enum.IsDefined(typeof(Personality),b.Personality)||!Enum.IsDefined(typeof(Plumage),b.Plumage)||(!b.Rare&&b.Plumage==Plumage.White))return false;
                 if(b.Rare)rares++;
             }
-            if(rares>1||!ValidFriendships(save)||!ValidWishes(save))return false;
+            if(rares>1||!ValidFriendships(save)||!ValidWishes(save)||!ValidFestivalSave(save))return false;
             var restoredFriendships=CopyFriendships(save.Friendships);
             friendships.Clear();friendships.AddRange(restoredFriendships);
             Array.Clear(plumageClocks,0,plumageClocks.Length);
@@ -242,6 +246,7 @@ namespace PigeonSandbox
             Money=Math.Max(0,save.Money);
             Time=Math.Max(0,save.Time);
             Day=1+(int)(Time/DayLength);
+            RestoreFestival(save);
             Purchases=Math.Max(0,save.Purchases);
             NestBoxes=save.NestBoxes;
             BathPriority=save.BathPriority;
@@ -663,6 +668,7 @@ namespace PigeonSandbox
                         Income+=purchase;
                         Purchases++;
                         v.Action=target.Kind==FacilityKind.Cafe?"カフェでひと休み":"パンを購入！";
+                        WitnessFestivalPurchase(target);
                     }
                     else v.Action="公園でひと休み";
                     v.Bought=true;
@@ -671,6 +677,7 @@ namespace PigeonSandbox
                 else if(v.Bought)v.Action="帰り道";
             }
             TickWishes(dt);
+            TickFestival();
             int capacity=4+Levels(FacilityKind.Housing)*2+(NestBoxes?2:0);
             if(growthClock>=32)
             {
