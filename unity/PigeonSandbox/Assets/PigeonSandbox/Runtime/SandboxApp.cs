@@ -10,6 +10,8 @@ namespace PigeonSandbox
   float yaw=35,pitch=48,zoom=14,saveClock;
   int speed=1,selected=-1,tab;
   bool paused;
+  int postcardCount;
+  int postcardPage;
   FacilityKind building=FacilityKind.Bakery;
   enum Tool { Inspect,Build,Move }
   Tool tool=Tool.Build;
@@ -50,7 +52,7 @@ namespace PigeonSandbox
   }
   void Start()
   {
-   Application.targetFrameRate=60; font=Resources.Load<Font>("NotoSansJP"); town=new TownSimulation(); Load(); zoom=targetZoom=14+town.ExpansionLevel*3;
+   Application.targetFrameRate=60; font=Resources.Load<Font>("NotoSansJP"); town=new TownSimulation(); Load(); postcardCount=town.Postcards.Count; zoom=targetZoom=14+town.ExpansionLevel*3;
    world=new GameObject("Mayor town").AddComponent<TownWorld>(); world.Initialize();
    RenderSettings.ambientMode=UnityEngine.Rendering.AmbientMode.Flat; RenderSettings.ambientLight=new Color(.72f,.75f,.7f);
    sun=new GameObject("Daylight").AddComponent<Light>(); sun.type=LightType.Directional; sun.intensity=.85f;
@@ -245,6 +247,7 @@ namespace PigeonSandbox
    UpdateCamera(UnityEngine.Time.unscaledDeltaTime); bool hover=GridPoint(Input.mousePosition,out int hx,out int hz);
    world.Preview(hx,hz,hover&&!(pointerInTown&&dragged)&&tool!=Tool.Inspect,town.CanPlace(hx,hz,tool==Tool.Move?selected:-1)&&(tool!=Tool.Build||town.Money>=TownSimulation.Cost(building)));
    if(!paused) for(int i=0;i<speed;i++) town.Tick(Mathf.Min(UnityEngine.Time.deltaTime,.1f)); world.Sync(town,paused); UpdateDaylight();
+   if(town.Postcards.Count>postcardCount) { postcardCount=town.Postcards.Count; postcardPage=0; message=town.Notice; tab=3; scroll=new Vector2(0,420); Save(false); }
    saveClock+=UnityEngine.Time.unscaledDeltaTime; if(saveClock>=30) { Save(false); saveClock=0; }
   }
   void Save(bool notify)
@@ -365,9 +368,9 @@ namespace PigeonSandbox
    float foodBottom=Meter(x,r.y+18,meterW,"食料供給",town.FoodSupply);
    float cleanBottom=Meter(x+meterW+meterGap,r.y+18,meterW,"清潔さ",town.Cleanliness);
    float tabsTop=FlowLabel(x,Mathf.Max(foodBottom,cleanBottom)+8,innerW,"混雑 "+town.Crowding.ToString("0")+" · 木と広場でゆとりを",small);
-   string[] tabs={"お願い","鳩図鑑","条例"}; float tabGap=6,tabW=(innerW-tabGap*2)/3,tabY=tabsTop+8;
-   for(int i=0;i<3;i++) if(Button(new Rect(x+i*(tabW+tabGap),tabY,tabW,38),tabs[i],tab==i)) { CancelRename(); tab=i; scroll=Vector2.zero; }
-   float scrollY=tabY+50,scrollH=r.y+r.height-scrollY-16;
+   string[] tabs={"お願い","鳩図鑑","条例",town.FestivalDue&&!town.FestivalActive?"催し！":"催し"}; float tabGap=6,tabW=(innerW-tabGap)/2,tabY=tabsTop+8;
+   for(int i=0;i<tabs.Length;i++) if(Button(new Rect(x+(i%2)*(tabW+tabGap),tabY+(i/2)*44,tabW,38),tabs[i],tab==i)) { CancelRename(); tab=i; scroll=Vector2.zero; }
+   float scrollY=tabY+94,scrollH=r.y+r.height-scrollY-16;
    float contentW=innerW-GUI.skin.verticalScrollbar.fixedWidth-12;
    float content=RightContent(contentW,false);
    scroll=GUI.BeginScrollView(new Rect(x,scrollY,innerW,scrollH),scroll,new Rect(0,0,contentW,content),false,true);
@@ -435,7 +438,7 @@ namespace PigeonSandbox
      y=FlowLabel(0,y,width,town.FeatherHint(feather),small,draw)+22;
     }
    }
-   else
+   else if(tab==2)
    {
     y=FlowLabel(0,y,width,"市長のひと声",heading,draw)+12;
     string[] names={"公共施設に巣箱","水浴び優先区域","オープンカフェ支援"};
@@ -450,7 +453,135 @@ namespace PigeonSandbox
      y=FlowLabel(0,y,width,notes[i],small,draw)+24;
     }
    }
+   else y=FestivalContent(width,draw);
    return y+16;
+  }
+  float FestivalContent(float width,bool draw)
+  {
+   float y=FlowLabel(0,0,width,"街の催し",heading,draw)+4;
+   y=FlowLabel(0,y,width,"3日ごとに開けます。施設の配置と、鳩や人の実際の行動で絵はがきが届きます。",small,draw)+8;
+   string calendar=town.FestivalActive?"ただいま開催中":town.FestivalDue?"開催できます！":"次の開催は DAY "+town.NextFestivalDay;
+   y=FlowLabel(0,y,width,calendar,text,draw)+9;
+   var selected=town.SelectedFestival;
+   y=FlowLabel(0,y,width,"会場："+TownSimulation.FestivalVenueHint(selected),small,draw);
+   bool venueReady=town.FestivalActive?town.FestivalCurrentVenueReady:town.FestivalVenueReady(selected);
+   y=FlowLabel(0,y,width,venueReady?"✓ 会場ができています":town.FestivalActive?"会場を整えると観察を再開できます":"会場を整えると開催できます",small,draw)+7;
+   if(!town.FestivalActive)
+   {
+    if(draw&&Button(new Rect(0,y,width,50),town.FestivalDue?"催しを開く":"DAY "+town.NextFestivalDay+"まで待つ",false,town.FestivalDue&&venueReady)&&town.StartFestival())
+    {
+     message=town.Notice; Save(false);
+    }
+    y+=65;
+    y=FlowLabel(0,y,width,"催しを選ぶ",heading,draw)+4;
+    for(int i=0;i<3;i++)
+    {
+     var kind=(FestivalKind)i;
+     if(draw&&Button(new Rect(0,y,width,48),TownSimulation.FestivalName(kind),town.SelectedFestival==kind))
+     {
+      town.ChooseFestival(kind); Save(false);
+     }
+     y+=56;
+    }
+   }
+   else
+   {
+    y=FlowLabel(0,y,width,"街を眺めて、次の場面を見つけよう。",small,draw)+6;
+    bool main=town.FestivalMainBirdIds.Count>0,partner=town.FestivalPartnerBirdIds.Count>0;
+    if(selected==FestivalKind.BakeryMarket)
+    {
+     y=FlowLabel(0,y,width,(main?"✓ ":"○ ")+"鳩がパン屋で食事",text,draw);
+     y=FlowLabel(0,y,width,(town.FestivalHumanPurchase?"✓ ":"○ ")+"人がパンを購入",text,draw);
+    }
+    else if(selected==FestivalKind.WatersideDay)
+    {
+     y=FlowLabel(0,y,width,(main?"✓ ":"○ ")+"鳩が噴水で水浴び",text,draw);
+     y=FlowLabel(0,y,width,(partner?"✓ ":"○ ")+"鳩が近くの公園で休憩",text,draw);
+    }
+    else y=FlowLabel(0,y,width,(main?"✓ ":"○ ")+"夕方、鳩が時計台に止まる",text,draw);
+    y=FlowLabel(0,y,width,"期限も失敗のペナルティもありません。",small,draw)+8;
+    if(draw&&Button(new Rect(0,y,width,44),"準備に戻る")&&town.CancelFestival()) { message=town.Notice; Save(false); }
+    y+=59;
+   }
+   int[] totals=new int[3];foreach(var card in town.Postcards)totals[(int)card.Kind]++;
+   y=FlowLabel(0,y,width,"絵はがき  "+town.Postcards.Count+"枚",heading,draw);
+   y=FlowLabel(0,y,width,"朝市 "+totals[0]+"  ·  水辺 "+totals[1]+"  ·  時計台 "+totals[2],small,draw)+9;
+   if(town.Postcards.Count==0)y=FlowLabel(0,y,width,"最初の一枚には、参加した鳩の名前が残ります。",small,draw);
+   const int cardsPerPage=8;
+   int lastPage=Mathf.Max(0,(town.Postcards.Count-1)/cardsPerPage);
+   int page=Mathf.Min(postcardPage,lastPage);
+   if(town.Postcards.Count>cardsPerPage)y=FlowLabel(0,y,width,(page+1)+" / "+(lastPage+1)+"ページ",small,draw)+4;
+   for(int i=town.Postcards.Count-1-page*cardsPerPage;i>=0&&i>town.Postcards.Count-1-(page+1)*cardsPerPage;i--)
+   {
+    var card=town.Postcards[i];float start=y;
+    float cy=y+12;
+    float captionW=width-94;
+    cy=FlowLabel(82,cy,captionW,"POSTCARD / DAY "+card.Day,small,false);
+    cy=FlowLabel(82,cy,captionW,TownSimulation.FestivalName(card.Kind),heading,false);
+    cy=Mathf.Max(cy,start+78);
+    cy=FlowLabel(13,cy,width-26,"参加："+string.Join("、",card.BirdNames.ToArray()),small,false);
+    if(draw)
+    {
+     Panel(new Rect(0,start,width,cy-start+8),new Color(.95f,.9f,.79f));
+     Panel(new Rect(0,start,5,cy-start+8),green);
+     GUI.DrawTexture(new Rect(12,start+12,60,60),FestivalPortrait(card.Kind));
+     float py=start+12;
+     py=FlowLabel(82,py,captionW,"POSTCARD / DAY "+card.Day,small);
+     py=FlowLabel(82,py,captionW,TownSimulation.FestivalName(card.Kind),heading);
+     FlowLabel(13,Mathf.Max(py,start+78),width-26,"参加："+string.Join("、",card.BirdNames.ToArray()),small);
+    }
+    y=cy+19;
+   }
+   if(town.Postcards.Count>cardsPerPage)
+   {
+    float half=(width-8)/2;
+    if(draw&&Button(new Rect(0,y,half,42),"新しい方へ",false,page>0)) { postcardPage=page-1; scroll=Vector2.zero; }
+    if(draw&&Button(new Rect(half+8,y,half,42),"古い方へ",false,page<lastPage)) { postcardPage=page+1; scroll=Vector2.zero; }
+    y+=56;
+   }
+   return y;
+  }
+  readonly Texture2D[] festivalPortraits=new Texture2D[3];
+  Texture2D FestivalPortrait(FestivalKind kind)
+  {
+   int index=(int)kind;
+   if(festivalPortraits[index]!=null)return festivalPortraits[index];
+   var texture=new Texture2D(64,64);
+   texture.filterMode=FilterMode.Point;
+   var pixels=new Color[64*64];
+   Color sky=index==0?new Color(.98f,.81f,.59f):index==1?new Color(.69f,.87f,.84f):new Color(.78f,.72f,.83f);
+   Color ground=new Color(.87f,.87f,.7f),stone=new Color(.91f,.88f,.76f),dark=new Color(.24f,.37f,.34f),water=new Color(.36f,.7f,.72f);
+   for(int py=0;py<64;py++)for(int px=0;px<64;px++)
+   {
+    Color color=py<14?ground:sky;
+    if(index==0)
+    {
+     if(px>=13&&px<52&&py>=13&&py<35)color=stone;
+     if(px>=9&&px<56&&py>=33&&py<45&&py<45-Math.Abs(px-32)*.42f)color=new Color(.72f,.36f,.26f);
+     if(px>=20&&px<44&&py>=21&&py<27)color=new Color(.99f,.97f,.84f);
+     if(px>=27&&px<37&&py>=13&&py<21)color=dark;
+     if((px-32)*(px-32)/150f+(py-50)*(py-50)/18f<1)color=new Color(.98f,.85f,.42f);
+    }
+    else if(index==1)
+    {
+     if((px-32)*(px-32)/550f+(py-21)*(py-21)/140f<1)color=stone;
+     if((px-32)*(px-32)/400f+(py-23)*(py-23)/65f<1)color=water;
+     if(px>=28&&px<36&&py>=25&&py<42)color=stone;
+     if((px-32)*(px-32)/60f+(py-43)*(py-43)/20f<1)color=water;
+     if((px==18||px==45)&&py>=36&&py<43)color=water;
+    }
+    else
+    {
+     if(px>=20&&px<44&&py>=12&&py<48)color=stone;
+     if(px>=17&&px<47&&py>=47&&py<53)color=dark;
+     if(px>=29&&px<35&&py>=12&&py<27)color=dark;
+     int dx=px-32,dy=py-39;
+     if(dx*dx+dy*dy<72)color=new Color(.98f,.95f,.81f);
+     if(dx*dx+dy*dy<72&&(Math.Abs(dx)<=1&&dy>=0||Math.Abs(dy)<=1&&dx>=0))color=dark;
+    }
+    pixels[py*64+px]=color;
+   }
+   texture.SetPixels(pixels);texture.Apply();festivalPortraits[index]=texture;return texture;
   }
   readonly Texture2D[] featherPortraits=new Texture2D[6];
   Texture2D FeatherPortrait(Plumage feather,bool found)
