@@ -10,19 +10,23 @@ namespace PigeonSandbox
         private Material seedMaterial;
         private bool initialized;
 
-        public void InitializeBirdOnly(bool white, bool mayor)
+        public void InitializeBirdOnly(bool white, bool mayor, Plumage feather=Plumage.Blue)
         {
             if (initialized) return;
             initialized = true;
             CreateBird();
-            if (white)
-                foreach (var renderer in Bird.GetComponentsInChildren<Renderer>())
-                    if (renderer.sharedMaterial.name.Contains("grey") || renderer.sharedMaterial.name.Contains("Slate"))
-                    {
-                        var material = new Material(renderer.sharedMaterial);
-                        material.color = new Color(.94f,.91f,.83f);
-                        renderer.sharedMaterial = material;
-                    }
+            if(white)feather=Plumage.White;
+            foreach(var renderer in Bird.GetComponentsInChildren<Renderer>())
+            {
+                string part=renderer.gameObject.name;
+                bool wing=part=="Folded wing", body=part=="Pear shaped breast"||part=="Soft chest", head=part=="Round head", dark=part=="Broad wing bar"||part=="Flight tip"||part=="Smooth tail";
+                string hex=null;
+                if(feather==Plumage.White&&(wing||body||head))hex="EFE9D8";
+                if(feather==Plumage.Brown)hex=wing?"BE9471":body?"9C755E":head?"785848":dark?"594638":null;
+                if(feather==Plumage.Checker)hex=wing?"586470":body?"788490":dark?"303B47":null;
+                if(feather==Plumage.Pied)hex=wing||body?"EEEDE3":head||dark?"303B47":null;
+                if(hex!=null)renderer.sharedMaterial=Material("Plumage "+feather,hex);
+            }
             if (mayor)
             {
                 var gold = Material("Mayor gold", "D4AA50");
@@ -125,7 +129,7 @@ namespace PigeonSandbox
             }
         }
 
-        public void Animate(float time, float speed, bool flying, bool eating)
+        public void Animate(float time, float speed, bool flying, bool eating, string activity=null)
         {
             if (!initialized) return;
             float walk = flying || eating ? 0 : Mathf.Clamp01(speed * 1.8f);
@@ -141,6 +145,19 @@ namespace PigeonSandbox
             rightFoot.localRotation = Quaternion.Euler(flying ? -65 : -step * 24 * walk, 0, 0);
             leftFoot.localPosition = new Vector3(-.20f, .06f + Mathf.Max(0, step) * .085f * walk, .10f + step * .07f * walk);
             rightFoot.localPosition = new Vector3(.20f, .06f + Mathf.Max(0, -step) * .085f * walk, .10f - step * .07f * walk);
+            if(!flying&&activity=="羽繕い")
+            {
+                neck.localRotation=Quaternion.Euler(24+Mathf.Sin(time*4)*9,62+Mathf.Sin(time*1.7f)*12,0);
+                rightWing.localRotation=Quaternion.Euler(0,0,12+Mathf.Sin(time*2)*4);
+            }
+            else if(!flying&&activity=="日向ぼっこ")
+            {
+                torso.localPosition+=new Vector3(0,-.045f,0);
+                torso.localRotation=Quaternion.Euler(0,0,-7);
+                neck.localRotation=Quaternion.Euler(-9,Mathf.Sin(time*.5f)*8,5);
+                leftWing.localRotation=Quaternion.Euler(0,0,-16);
+                rightWing.localRotation=Quaternion.Euler(0,0,16);
+            }
         }
 
         public GameObject CreateSeed(Vector3 pos)

@@ -4,8 +4,10 @@ namespace PigeonSandbox
 {
     public enum FacilityKind
     {
-        Bakery,Fountain,Housing,Tree,Plaza,ClockTower
+        Bakery,Fountain,Housing,Tree,Plaza,ClockTower,Cafe,Park
     }
+    public enum TownTimeOfDay { Morning, Noon, Evening }
+    public enum Plumage { Blue, Checker, Brown, Pied, White }
     public enum Personality
     {
         Foodie,Bather,Showoff,Shy
@@ -25,7 +27,16 @@ namespace PigeonSandbox
         public string Name;
         public Personality Personality;
         public bool Rare,Mayor;
+        public Plumage Plumage;
+        // Heading and CheerTurn are both degrees. The cheerful turn is visual only.
         public float X,Y,Z,Heading;
+        [NonSerialized] public float CheerTurn;
+        internal float CheerRemaining;
+        [NonSerialized] internal bool WishThanksPending;
+        [NonSerialized] public int CompanionId=-1;
+        [NonSerialized] public SocialActivity Social;
+        internal float SocialTime,SocialCooldown;
+        internal int SocialPlaceId=-1,SocialPlaceX,SocialPlaceZ;
         public string Action="散歩";
         public int TargetId=-1;
         internal float Wait,Decision;
@@ -49,14 +60,69 @@ namespace PigeonSandbox
     {
         public List<Facility> Facilities=new List<Facility>();
         public List<TownBird> Birds=new List<TownBird>();
+        public List<BirdFriendship> Friendships=new List<BirdFriendship>();
+        public List<BirdWish> Wishes=new List<BirdWish>();
         public bool NestBoxes,BathPriority,CafeSupport;
         public float Money,Time;
-        public int Purchases;
+        public int Purchases,ExpansionLevel;
         public bool[] CompletedRequests;
     }
-    public class TownSimulation
+    public partial class TownSimulation
     {
+        readonly float[] plumageClocks=new float[5];
+        public static Plumage FeatherOf(TownBird bird)=>bird.Rare?Plumage.White:bird.Plumage;
+        public static string FeatherName(Plumage feather)=>new[]{"青灰の鳩","ごま模様の鳩","茶色い鳩","白黒まだらの鳩","白い鳩"}[(int)feather];
+        public bool Discovered(Plumage feather)=>Birds.Exists(b=>FeatherOf(b)==feather);
+        public bool HabitatReady(Plumage feather)
+        {
+            switch(feather)
+            {
+                case Plumage.Checker:return Facilities.Exists(f=>f.Kind==FacilityKind.Plaza&&NearKind(f,FacilityKind.Bakery));
+                case Plumage.Brown:return Facilities.Exists(f=>f.Kind==FacilityKind.Cafe&&NearKind(f,FacilityKind.Bakery));
+                case Plumage.Pied:return Facilities.Exists(f=>f.Kind==FacilityKind.Park&&NearKind(f,FacilityKind.Tree));
+                case Plumage.White:return QuietHabitat();
+                default:return true;
+            }
+        }
+        public string FeatherHint(Plumage feather)
+        {
+            if(feather==Plumage.White)return RareHint;
+            string hint=new[]{"最初から街に暮らす、青灰色の仲間。","広場の2マス以内にパン屋を。","カフェの2マス以内にパン屋を。","花壇の公園の2マス以内に街路樹を。"}[(int)feather];
+            if(feather==Plumage.Blue||Discovered(feather))return hint;
+            return hint+(HabitatReady(feather)?" 環境が整いました。45秒ほど待ってみよう。":"");
+        }
+        void TickPlumage(float dt)
+        {
+            for(int i=1;i<=3;i++)
+            {
+                var feather=(Plumage)i;
+                if(Discovered(feather))continue;
+                plumageClocks[i]=HabitatReady(feather)?plumageClocks[i]+dt:0;
+                if(plumageClocks[i]<45||Birds.Count>=15)continue;
+                AddBird(i==1?Personality.Showoff:i==2?Personality.Foodie:Personality.Shy,false,false);
+                var bird=Birds[Birds.Count-1];
+                bird.Plumage=feather; bird.Name=new[]{"","ごま","シナモン","オセロ"}[i];
+                Changed(FeatherName(feather)+"『"+bird.Name+"』がやってきました！");
+            }
+        }
         public const float CellSize=2.2f;
+        public const float DayLength=120;
+        public float DayProgress=>(Time%DayLength)/DayLength;
+        public TownTimeOfDay TimeOfDay=>(TownTimeOfDay)Math.Min(2,(int)(DayProgress*3));
+        public string TimeOfDayName=>new[]{"朝","昼","夕方"}[(int)TimeOfDay];
+        public int ExpansionLevel { get; private set; }
+        public int MapRadius=>4+ExpansionLevel;
+        public int MapSize=>MapRadius*2+1;
+        public float MapEdge=>(MapRadius+.55f)*CellSize;
+        public bool CanExpand=>ExpansionLevel<4;
+        static readonly int[] ExpansionPrices={500,1000,1800,3000};
+        public int ExpansionCost=>CanExpand?ExpansionPrices[ExpansionLevel]:0;
+        public bool ExpandTown()
+        {
+            if(!CanExpand||Money<ExpansionCost) return false;
+            Money-=ExpansionCost; ExpansionLevel++;
+            Changed("街を"+MapSize+"×"+MapSize+"マスに広げました！"); return true;
+        }
         public readonly List<Facility> Facilities=new List<Facility>();
         public readonly List<TownBird> Birds=new List<TownBird>();
         public readonly List<Visitor> Visitors=new List<Visitor>();
@@ -93,13 +159,24 @@ namespace PigeonSandbox
                 Title="白いお客さま",Description="静かな家の2マス以内に木と噴水。白い鳩を迎える",Reward=150
             }
             );
+            EnsureWishes();
             Recalculate();
+        }
+        public const int MaxBirdNameLength=24;
+        public bool RenameBird(int id,string name)
+        {
+            if(string.IsNullOrWhiteSpace(name)) return false;
+            name=name.Trim();
+            if(new System.Globalization.StringInfo(name).LengthInTextElements>MaxBirdNameLength) return false;
+            foreach(char ch in name) if(char.IsControl(ch)||ch=='\u2028'||ch=='\u2029') return false;
+            var bird=Birds.Find(b=>b.Id==id); if(bird==null) return false;
+            bird.Name=name; return true;
         }
         public TownSave Capture()
         {
             var save=new TownSave
             {
-                Money=Money,Time=Time,Purchases=Purchases,NestBoxes=NestBoxes,BathPriority=BathPriority,CafeSupport=CafeSupport,CompletedRequests=new bool[Requests.Count]
+                Wishes=CopyWishes(Wishes),Friendships=CopyFriendships(friendships),Money=Money,Time=Time,Purchases=Purchases,ExpansionLevel=ExpansionLevel,NestBoxes=NestBoxes,BathPriority=BathPriority,CafeSupport=CafeSupport,CompletedRequests=new bool[Requests.Count]
             }
             ;
             foreach(var f in Facilities)save.Facilities.Add(new Facility
@@ -109,7 +186,7 @@ namespace PigeonSandbox
             );
             foreach(var b in Birds)save.Birds.Add(new TownBird
             {
-                Id=b.Id,Name=b.Name,Personality=b.Personality,Rare=b.Rare,Mayor=b.Mayor,X=b.X,Y=b.Y,Z=b.Z,Heading=b.Heading,Action=b.Action,TargetId=b.TargetId
+                Id=b.Id,Name=b.Name,Personality=b.Personality,Plumage=FeatherOf(b),Rare=b.Rare,Mayor=b.Mayor,X=b.X,Y=b.Y,Z=b.Z,Heading=b.Heading,Action=b.Action,TargetId=b.TargetId
             }
             );
             for(int i=0;i<Requests.Count;i++)save.CompletedRequests[i]=Requests[i].Complete;
@@ -117,20 +194,26 @@ namespace PigeonSandbox
         }
         public bool Restore(TownSave save)
         {
-            if(save==null||save.Facilities==null||save.Birds==null||save.Birds.Count==0||save.Birds.Count>12||float.IsNaN(save.Money)||float.IsInfinity(save.Money)||float.IsNaN(save.Time)||float.IsInfinity(save.Time))return false;
+            if(save==null||save.Facilities==null||save.Birds==null||save.Birds.Count==0||save.Birds.Count>15||float.IsNaN(save.Money)||float.IsInfinity(save.Money)||float.IsNaN(save.Time)||float.IsInfinity(save.Time))return false;
+            if(save.ExpansionLevel<0||save.ExpansionLevel>4)return false;
+            int radius=4+save.ExpansionLevel;
             var ids=new HashSet<int>();
             var cells=new HashSet<string>();
             foreach(var f in save.Facilities)
             {
-                if(f==null||f.Id<1||!ids.Add(f.Id)||!cells.Add(f.X+":"+f.Z)||Math.Abs((long)f.X)>4||Math.Abs((long)f.Z)>4||f.Level<1||f.Level>3||!Enum.IsDefined(typeof(FacilityKind),f.Kind))return false;
+                if(f==null||f.Id<1||!ids.Add(f.Id)||!cells.Add(f.X+":"+f.Z)||Math.Abs((long)f.X)>radius||Math.Abs((long)f.Z)>radius||f.Level<1||f.Level>3||!Enum.IsDefined(typeof(FacilityKind),f.Kind))return false;
             }
             int rares=0;
             foreach(var b in save.Birds)
             {
-                if(b==null||b.Id<1||!ids.Add(b.Id)||!Enum.IsDefined(typeof(Personality),b.Personality))return false;
+                if(b==null||b.Id<1||!ids.Add(b.Id)||!Enum.IsDefined(typeof(Personality),b.Personality)||!Enum.IsDefined(typeof(Plumage),b.Plumage)||(!b.Rare&&b.Plumage==Plumage.White))return false;
                 if(b.Rare)rares++;
             }
-            if(rares>1)return false;
+            if(rares>1||!ValidFriendships(save)||!ValidWishes(save))return false;
+            var restoredFriendships=CopyFriendships(save.Friendships);
+            friendships.Clear();friendships.AddRange(restoredFriendships);
+            Array.Clear(plumageClocks,0,plumageClocks.Length);
+            ExpansionLevel=save.ExpansionLevel;
             Facilities.Clear();
             Birds.Clear();
             Visitors.Clear();
@@ -148,33 +231,34 @@ namespace PigeonSandbox
             {
                 Birds.Add(new TownBird
                 {
-                    Id=b.Id,Name=b.Name,Personality=b.Personality,Rare=b.Rare,Mayor=b.Mayor,X=FinitePosition(b.X),Z=FinitePosition(b.Z),Action="散歩",TargetId=-1
+                    Id=b.Id,Name=b.Name,Personality=b.Personality,Plumage=FeatherOf(b),Rare=b.Rare,Mayor=b.Mayor,X=FinitePosition(b.X),Z=FinitePosition(b.Z),Action="散歩",TargetId=-1
                 }
                 );
                 nextId=Math.Max(nextId,b.Id+1);
             }
+            Wishes.Clear();Wishes.AddRange(CopyWishes(save.Wishes));EnsureWishes();
             Money=Math.Max(0,save.Money);
             Time=Math.Max(0,save.Time);
-            Day=1+(int)(Time/120);
+            Day=1+(int)(Time/DayLength);
             Purchases=Math.Max(0,save.Purchases);
             NestBoxes=save.NestBoxes;
             BathPriority=save.BathPriority;
             CafeSupport=save.CafeSupport;
             rareArrived=rares>0;
-            rareClock=spawnClock=upkeepClock=growthClock=metricClock=0;
+            rareClock=spawnClock=upkeepClock=growthClock=metricClock=socialClock=0;
             for(int i=0;i<Requests.Count;i++)Requests[i].Complete=save.CompletedRequests!=null&&i<save.CompletedRequests.Length&&save.CompletedRequests[i];
             Changed("保存したまちを再開しました。");
             return true;
         }
-        static float FinitePosition(float value)
+        float FinitePosition(float value)
         {
-            return float.IsNaN(value)||float.IsInfinity(value)?0:Clamp(value,-10,10);
+            return float.IsNaN(value)||float.IsInfinity(value)?0:Clamp(value,-MapEdge,MapEdge);
         }
         public static int Cost(FacilityKind k)
         {
             return new[]
             {
-                140,110,120,55,80,230
+                140,110,120,55,80,230,180,95
             }
             [(int)k];
         }
@@ -182,7 +266,7 @@ namespace PigeonSandbox
         {
             return new[]
             {
-                "パン屋","噴水","集合住宅","街路樹","広場","時計台"
+                "パン屋","噴水","集合住宅","街路樹","広場","時計台","オープンカフェ","花壇の公園"
             }
             [(int)k];
         }
@@ -226,7 +310,7 @@ namespace PigeonSandbox
         }
         public bool CanPlace(int x,int z,int ignoreId=-1)
         {
-            return x>=-4&&x<=4&&z>=-4&&z<=4&&!Facilities.Exists(f=>f.Id!=ignoreId&&f.X==x&&f.Z==z);
+            return x>=-MapRadius&&x<=MapRadius&&z>=-MapRadius&&z<=MapRadius&&!Facilities.Exists(f=>f.Id!=ignoreId&&f.X==x&&f.Z==z);
         }
         void AddFacility(FacilityKind kind,int x,int z)
         {
@@ -324,18 +408,21 @@ namespace PigeonSandbox
         public void Recalculate()
         {
             int bakery=Levels(FacilityKind.Bakery),water=Levels(FacilityKind.Fountain),home=Levels(FacilityKind.Housing),tree=Levels(FacilityKind.Tree),plaza=Levels(FacilityKind.Plaza),clock=Levels(FacilityKind.ClockTower);
-            int market=0,baths=0;
+            int cafe=Levels(FacilityKind.Cafe),park=Levels(FacilityKind.Park);
+            int market=0,baths=0,terraces=0,gardens=0;
             foreach(var f in Facilities)
             {
                 if(f.Kind==FacilityKind.Bakery&&NearKind(f,FacilityKind.Plaza))market+=f.Level;
+                if(f.Kind==FacilityKind.Cafe&&NearKind(f,FacilityKind.Bakery))terraces+=f.Level;
+                if(f.Kind==FacilityKind.Park&&NearKind(f,FacilityKind.Housing))gardens+=f.Level;
                 if(f.Kind==FacilityKind.Fountain&&NearKind(f,FacilityKind.Bakery))baths+=f.Level;
             }
-            FoodSupply=Clamp(28+bakery*18+(CafeSupport?15:0)-Birds.Count*2);
-            Crowding=Clamp(18+bakery*10+clock*8+Birds.Count*2-plaza*9-tree*3-market*5+(CafeSupport?8:0));
-            Cleanliness=Clamp(88+tree*5+water*4-Birds.Count*3-bakery*4+(BathPriority?-8:0));
-            PigeonHappiness=Clamp(30+FoodSupply*.28f+water*5+home*4+tree*3+baths*5-Crowding*.16f+(NestBoxes?8:0)+(BathPriority?10:0));
-            HumanSatisfaction=Clamp(45+market*8+clock*5+plaza*4+Cleanliness*.2f-Crowding*.32f+(BathPriority?-7:0)+(CafeSupport?5:0));
-            Upkeep=bakery*3+water*2+home+tree*.5f+clock*4+(NestBoxes?3:0)+(BathPriority?3:0)+(CafeSupport?4:0);
+            FoodSupply=Clamp(28+bakery*18+cafe*10+terraces*4+(CafeSupport?15:0)-Birds.Count*2);
+            Crowding=Clamp(18+bakery*10+cafe*6+clock*8-park*7-gardens*3+Birds.Count*2-plaza*9-tree*3-market*5+(CafeSupport?8:0));
+            Cleanliness=Clamp(88+tree*5+water*4+park*4-cafe*3-Birds.Count*3-bakery*4+(BathPriority?-8:0));
+            PigeonHappiness=Clamp(30+FoodSupply*.28f+park*5+gardens*3+cafe*2+water*5+home*4+tree*3+baths*5-Crowding*.16f+(NestBoxes?8:0)+(BathPriority?10:0));
+            HumanSatisfaction=Clamp(45+market*8+cafe*4+park*5+terraces*4+gardens*3+clock*5+plaza*4+Cleanliness*.2f-Crowding*.32f+(BathPriority?-7:0)+(CafeSupport?5:0));
+            Upkeep=cafe*3+park+bakery*3+water*2+home+tree*.5f+clock*4+(NestBoxes?3:0)+(BathPriority?3:0)+(CafeSupport?4:0);
             Reward(0,market>0);
             Reward(1,baths>0&&home>0);
             Reward(2,rareArrived);
@@ -367,19 +454,25 @@ namespace PigeonSandbox
             float score=-999;
             foreach(var f in Facilities)
             {
-                float s=(float)random.NextDouble()*3;
+                float s=(float)random.NextDouble()*3+WishPreference(b,f);
+                // Routine is a preference, not an order: personality and ongoing activities remain intact.
+                if(TimeOfDay==TownTimeOfDay.Morning&&(f.Kind==FacilityKind.Bakery||f.Kind==FacilityKind.Cafe))s+=3;
+                if(TimeOfDay==TownTimeOfDay.Noon&&(f.Kind==FacilityKind.Fountain||f.Kind==FacilityKind.Park))s+=3;
+                if(TimeOfDay==TownTimeOfDay.Evening&&(f.Kind==FacilityKind.Park||f.Kind==FacilityKind.Tree||f.Kind==FacilityKind.Housing))s+=6;
                 if(f.Kind==FacilityKind.Bakery&&NearKind(f,FacilityKind.Plaza))s+=3;
                 if(f.Kind==FacilityKind.Fountain&&NearKind(f,FacilityKind.Bakery))s+=3;
+                if(f.Kind==FacilityKind.Cafe&&NearKind(f,FacilityKind.Bakery))s+=3;
+                if(f.Kind==FacilityKind.Park&&NearKind(f,FacilityKind.Housing))s+=3;
                 switch(b.Personality)
                 {
-                    case Personality.Foodie:s+=f.Kind==FacilityKind.Bakery?11:f.Kind==FacilityKind.Plaza?3:0;
+                    case Personality.Foodie:s+=f.Kind==FacilityKind.Bakery?11:f.Kind==FacilityKind.Cafe?10:f.Kind==FacilityKind.Plaza?3:0;
                     break;
-                    case Personality.Bather:s+=f.Kind==FacilityKind.Fountain?12+(BathPriority?4:0):0;
+                    case Personality.Bather:s+=f.Kind==FacilityKind.Fountain?12+(BathPriority?4:0):f.Kind==FacilityKind.Park?4:0;
                     break;
-                    case Personality.Showoff:s+=f.Kind==FacilityKind.ClockTower?13:f.Kind==FacilityKind.Plaza?9:0;
+                    case Personality.Showoff:s+=f.Kind==FacilityKind.ClockTower?13:f.Kind==FacilityKind.Plaza?9:f.Kind==FacilityKind.Cafe?8:0;
                     break;
-                    case Personality.Shy:s+=f.Kind==FacilityKind.Tree?10:f.Kind==FacilityKind.Housing?9:0;
-                    if(NearKind(f,FacilityKind.Bakery))s-=5;
+                    case Personality.Shy:s+=f.Kind==FacilityKind.Park?11:f.Kind==FacilityKind.Tree?10:f.Kind==FacilityKind.Housing?9:0;
+                    if(NearKind(f,FacilityKind.Bakery)||NearKind(f,FacilityKind.Cafe))s-=5;
                     break;
                 }
                 if(f.Id==b.TargetId)s-=7;
@@ -433,7 +526,7 @@ namespace PigeonSandbox
             if(float.IsNaN(dt)||float.IsInfinity(dt)||dt<=0)return;
             dt=Math.Min(dt,.25f);
             Time+=dt;
-            Day=1+(int)(Time/120);
+            Day=1+(int)(Time/DayLength);
             spawnClock+=dt;
             upkeepClock+=dt;
             growthClock+=dt;
@@ -457,15 +550,37 @@ namespace PigeonSandbox
                 spawnClock=0;
                 Visitors.Add(new Visitor
                 {
-                    Id=nextId++,X=-10,Z=(float)random.NextDouble()*16-8
+                    Id=nextId++,X=-MapEdge,Z=((float)random.NextDouble()*2-1)*MapRadius*CellSize
                 }
                 );
             }
+            TickCompany(dt);
             foreach(var b in Birds)
             {
+                if(b.Social!=SocialActivity.None)continue;
+                if(b.CheerRemaining>0)
+                {
+                    b.CheerRemaining=Math.Max(0,b.CheerRemaining-dt);
+                    float progress=1-b.CheerRemaining/1.4f;
+                    b.CheerTurn=360*progress*progress*(3-2*progress);
+                    if(b.CheerRemaining==0) { b.CheerTurn=0; b.Action="休憩"; b.Wait=.6f; }
+                    continue;
+                }
                 b.Decision-=dt;
                 b.Wait-=dt;
+                if(b.WishThanksPending&&b.Y<.15f&&b.Wait<=0)
+                {
+                    b.WishThanksPending=false;b.CheerRemaining=1.4f;b.CheerTurn=0;b.Action="ありがとうのクルクル";
+                    continue;
+                }
                 var target=Find(b.TargetId);
+                // A little celebration after a pleasant meal or bath, never during travel or flight.
+                if(target!=null&&b.Wait<=0&&b.Y<.15f&&PigeonHappiness>=65&&
+                   (b.Action=="食事"||b.Action=="水浴び")&&random.NextDouble()<.35)
+                {
+                    b.CheerRemaining=1.4f; b.CheerTurn=0; b.Action="ごきげんクルクル";
+                    continue;
+                }
                 if(target==null||b.Decision<=0)
                 {
                     target=Select(b);
@@ -482,6 +597,7 @@ namespace PigeonSandbox
                 Approach(target,b.Id,out tx,out tz);
                 if(b.Wait>0)
                 {
+                    if(target.Kind==FacilityKind.Cafe)b.Action=Visitors.Exists(v=>Distance(v.X-b.X,v.Z-b.Z)<2.2f)?"人と交流":"テラスで休憩";
                     b.Y+=( ((target.Kind==FacilityKind.Tree||target.Kind==FacilityKind.ClockTower)?1.6f:0)-b.Y)*Math.Min(1,dt*3);
                     continue;
                 }
@@ -489,8 +605,8 @@ namespace PigeonSandbox
                 b.Action="散歩";
                 if(Walk(ref b.X,ref b.Z,ref b.Heading,tx,tz,.7f+(b.Mayor?.12f:0),dt))
                 {
-                    b.Action=target.Kind==FacilityKind.Fountain?"水浴び":target.Kind==FacilityKind.Bakery?"食事":target.Kind==FacilityKind.ClockTower?"眺める":"休憩";
-                    b.Wait=2.5f+(float)random.NextDouble()*3;
+                    b.Action=target.Kind==FacilityKind.Fountain?"水浴び":target.Kind==FacilityKind.Bakery?"食事":target.Kind==FacilityKind.ClockTower?"眺める":target.Kind==FacilityKind.Cafe?(Visitors.Exists(v=>Distance(v.X-b.X,v.Z-b.Z)<2.2f)?"人と交流":"テラスで休憩"):target.Kind==FacilityKind.Park?(TimeOfDay==TownTimeOfDay.Evening?"休憩":b.Id%2==0?"羽繕い":"日向ぼっこ"):"休憩";
+                    b.Wait=(target.Kind==FacilityKind.Park?5:2.5f)+(float)random.NextDouble()*3;
                 }
             }
             for(int i=Visitors.Count-1;i>=0;i--)
@@ -501,11 +617,13 @@ namespace PigeonSandbox
                 var target=Find(v.TargetId);
                 if(!v.Bought&&target==null)
                 {
-                    target=Facilities.Find(f=>f.Kind==FacilityKind.Bakery);
-                    if(target==null)target=Facilities.Find(f=>f.Kind==FacilityKind.Plaza);
+                    var shops=Facilities.FindAll(f=>f.Kind==FacilityKind.Bakery||f.Kind==FacilityKind.Cafe);
+                    target=v.Id%4==0?Facilities.Find(f=>f.Kind==FacilityKind.Park):null;
+                    if(target==null&&shops.Count>0)target=shops[v.Id%shops.Count];
+                    if(target==null)target=Facilities.Find(f=>f.Kind==FacilityKind.Park||f.Kind==FacilityKind.Plaza);
                     v.TargetId=target==null?-1:target.Id;
                 }
-                float tx=10,tz=v.Id%5-2;
+                float tx=MapEdge,tz=v.Id%5-2;
                 if(!v.Bought&&target!=null)Approach(target,v.Id,out tx,out tz);
                 if(Walk(ref v.X,ref v.Z,ref v.Heading,tx,tz,1.5f,dt))
                 {
@@ -514,36 +632,39 @@ namespace PigeonSandbox
                         Visitors.RemoveAt(i);
                         continue;
                     }
-                    if(target.Kind==FacilityKind.Bakery)
+                    if(target.Kind==FacilityKind.Bakery||target.Kind==FacilityKind.Cafe)
                     {
                         float purchase=8+target.Level*2+(NearKind(target,FacilityKind.Plaza)?4:0)+(CafeSupport?3:0);
+                        if(target.Kind==FacilityKind.Cafe)purchase=10+target.Level*2+(NearKind(target,FacilityKind.Bakery)?5:0)+(CafeSupport?3:0);
                         Money+=purchase;
                         Income+=purchase;
                         Purchases++;
-                        v.Action="パンを購入！";
+                        v.Action=target.Kind==FacilityKind.Cafe?"カフェでひと休み":"パンを購入！";
                     }
                     else v.Action="公園でひと休み";
                     v.Bought=true;
-                    v.Wait=2;
+                    v.Wait=target.Kind==FacilityKind.Cafe||target.Kind==FacilityKind.Park?5:2;
                 }
                 else if(v.Bought)v.Action="帰り道";
             }
+            TickWishes(dt);
             int capacity=4+Levels(FacilityKind.Housing)*2+(NestBoxes?2:0);
             if(growthClock>=32)
             {
                 growthClock=0;
-                if(Birds.Count<Math.Min(rareArrived?12:11,capacity)&&FoodSupply>=35)
+                if(Birds.FindAll(b=>b.Plumage==Plumage.Blue&&!b.Rare).Count<Math.Min(11,capacity)&&Birds.Count<15-(rareArrived?0:1)-(Discovered(Plumage.Checker)?0:1)-(Discovered(Plumage.Brown)?0:1)-(Discovered(Plumage.Pied)?0:1)&&FoodSupply>=35)
                 {
                     AddBird((Personality)(Birds.Count%4),false,false);
                     Notice="新しい鳩が引っ越してきました！";
                 }
             }
+            TickPlumage(dt);
             if(!rareArrived)
             {
                 rareClock=QuietHabitat()?rareClock+dt:0;
                 if(rareClock>=45)
                 {
-                    if(Birds.Count<12)AddBird(Personality.Shy,false,true);
+                    if(Birds.Count<15)AddBird(Personality.Shy,false,true);
                     else return;
                     rareArrived=true;
                     Notice="白い鳩『しらたま』がやってきました！";
