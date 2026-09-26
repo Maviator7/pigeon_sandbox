@@ -52,8 +52,19 @@ namespace PigeonSandbox.Editor
                 var shared = new HashSet<Material>();
                 foreach (var renderer in root.GetComponentsInChildren<Renderer>(true))
                     shared.Add(renderer.sharedMaterial);
-                Check(shared.Count <= 80, "benchmark town shares materials (" + shared.Count + ")");
-                Debug.Log("PIGEON WORLD SYNC VERIFICATION PASSED: incremental rebuild, move in place, removal, shared materials (" + shared.Count + ")");
+                Check(shared.Count <= 3, "baked world uses the shared vertex-colour material (" + shared.Count + ")");
+                // Baking: one renderer per facility, one for the ground, at most seven per pigeon.
+                foreach (var f in full.Facilities)
+                {
+                    var facility = world.FacilityObject(f.Id);
+                    Check(facility.GetComponentsInChildren<Renderer>(true).Length == 1 && facility.GetComponent<MeshFilter>().sharedMesh.vertexCount > 0, "facility " + f.Kind + " is one baked mesh");
+                }
+
+                foreach (var pigeon in root.GetComponentsInChildren<PigeonWorld>(true))
+                    Check(pigeon.GetComponentsInChildren<Renderer>(true).Length <= 7, "pigeon parts are baked per pivot");
+                int renderers = root.GetComponentsInChildren<Renderer>(true).Length;
+                Check(renderers < full.Facilities.Count + full.Birds.Count * 7 + 40, "baked benchmark town stays under the renderer budget (" + renderers + ")");
+                Debug.Log("PIGEON WORLD SYNC VERIFICATION PASSED: incremental rebuild, move in place, removal, baked meshes (" + renderers + " renderers, " + shared.Count + " materials)");
             }
             finally
             {

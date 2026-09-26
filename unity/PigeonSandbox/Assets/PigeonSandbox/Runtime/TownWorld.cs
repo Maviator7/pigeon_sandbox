@@ -53,7 +53,7 @@ namespace PigeonSandbox
             if (terrain != null)
             {
                 terrain.gameObject.SetActive(false);
-                MaterialCache.Release(terrain.gameObject);
+                MeshBaker.Release(terrain.gameObject);
             }
 
             terrain = new GameObject("Town ground").transform;
@@ -74,6 +74,7 @@ namespace PigeonSandbox
             Shape("Station left", PrimitiveType.Cube, station, new Vector3(-2, 1.1f, edge), new Vector3(.4f, 2.2f, .4f), "47665D");
             Shape("Station right", PrimitiveType.Cube, station, new Vector3(2, 1.1f, edge), new Vector3(.4f, 2.2f, .4f), "47665D");
             Shape("Station lintel", PrimitiveType.Cube, station, new Vector3(0, 2.2f, edge), new Vector3(4.5f, .5f, .6f), "47665D");
+            MeshBaker.Bake(terrain, true);
         }
 
         static Material Mat(string hex) => MaterialCache.Get(hex);
@@ -194,6 +195,7 @@ namespace PigeonSandbox
 
             if (f.Level > 1)
                 Shape("Improvement garden", PrimitiveType.Sphere, p, new Vector3(.78f, .2f, .7f), new Vector3(.35f, .4f, .35f), "80A479");
+            MeshBaker.Bake(p, true);
             return root;
         }
 
@@ -211,7 +213,7 @@ namespace PigeonSandbox
                 }
 
                 if (view != null)
-                    MaterialCache.Release(view.Root);
+                    MeshBaker.Release(view.Root);
                 buildings[f.Id] = new FacilityView{Root = FacilityModel(f), Kind = f.Kind, Level = f.Level};
             }
 
@@ -221,7 +223,7 @@ namespace PigeonSandbox
                     staleIds.Add(pair.Key);
             foreach (int id in staleIds)
             {
-                MaterialCache.Release(buildings[id].Root);
+                MeshBaker.Release(buildings[id].Root);
                 buildings.Remove(id);
             }
         }
@@ -276,6 +278,7 @@ namespace PigeonSandbox
                     Shape("Head", PrimitiveType.Sphere, human, new Vector3(0, .84f, 0), Vector3.one * .25f, "D8B995");
                     foreach (int s in new[]{-1, 1})
                         Shape("Leg", PrimitiveType.Cube, human, new Vector3(s * .07f, .1f, 0), new Vector3(.08f, .25f, .1f), "53645B");
+                    MeshBaker.Bake(human, true);
                     people.Add(v.Id, human);
                 }
 
@@ -287,7 +290,7 @@ namespace PigeonSandbox
             foreach (var pair in people)
                 if (!liveIds.Contains(pair.Key))
                 {
-                    MaterialCache.Release(pair.Value.gameObject);
+                    MeshBaker.Release(pair.Value.gameObject);
                     staleIds.Add(pair.Key);
                 }
 

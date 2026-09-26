@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
@@ -13,6 +14,7 @@ namespace PigeonSandbox.Editor
         public const string ReleaseVersion = "0.3.0";
         const string ParkScene = "Assets/Scenes/Park.unity";
         const string BenchmarkScene = "Assets/Scenes/Benchmark.unity";
+        const string VertexColorShader = "Assets/PigeonSandbox/Shaders/VertexColorLit.shader";
         [InitializeOnLoadMethod]
         static void FirstOpen()
         {
@@ -108,30 +110,49 @@ namespace PigeonSandbox.Editor
             var scenes = new[]{ParkScene, BenchmarkScene}.Where(File.Exists).ToArray();
             if (!EditorBuildSettings.scenes.Select(s => s.path).SequenceEqual(scenes))
                 EditorBuildSettings.scenes = scenes.Select(s => new EditorBuildSettingsScene(s, s == ParkScene)).ToArray();
-            // Runtime procedural materials need this shader included in the player. Keep exactly one entry.
-            var standard = Shader.Find("Standard");
+            // iOS: landscape only (the town UI is laid out for wide screens) and automatic signing.
+            // PIGEON_IOS_BUNDLE_ID / PIGEON_APPLE_TEAM override the identifier and team for a local device build.
+            string bundleId = Environment.GetEnvironmentVariable("PIGEON_IOS_BUNDLE_ID");
+            if (string.IsNullOrEmpty(bundleId))
+                bundleId = PlayerSettings.GetApplicationIdentifier(NamedBuildTarget.iOS);
+            if (string.IsNullOrEmpty(bundleId) || bundleId == "com.Company.ProductName")
+                bundleId = "com.pigeonsandbox.mayortown";
+            Set(() => PlayerSettings.GetApplicationIdentifier(NamedBuildTarget.iOS), v => PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.iOS, v), bundleId);
+            Set(() => PlayerSettings.defaultInterfaceOrientation, v => PlayerSettings.defaultInterfaceOrientation = v, UIOrientation.AutoRotation);
+            Set(() => PlayerSettings.allowedAutorotateToPortrait, v => PlayerSettings.allowedAutorotateToPortrait = v, false);
+            Set(() => PlayerSettings.allowedAutorotateToPortraitUpsideDown, v => PlayerSettings.allowedAutorotateToPortraitUpsideDown = v, false);
+            Set(() => PlayerSettings.allowedAutorotateToLandscapeLeft, v => PlayerSettings.allowedAutorotateToLandscapeLeft = v, true);
+            Set(() => PlayerSettings.allowedAutorotateToLandscapeRight, v => PlayerSettings.allowedAutorotateToLandscapeRight = v, true);
+            Set(() => PlayerSettings.iOS.appleEnableAutomaticSigning, v => PlayerSettings.iOS.appleEnableAutomaticSigning = v, true);
+            string team = Environment.GetEnvironmentVariable("PIGEON_APPLE_TEAM");
+            if (!string.IsNullOrEmpty(team))
+                Set(() => PlayerSettings.iOS.appleDeveloperTeamID, v => PlayerSettings.iOS.appleDeveloperTeamID = v, team);
+            // Runtime-created materials need their shaders in the player. Keep exactly one entry for each.
             var settings = new SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/GraphicsSettings.asset")[0]);
             var shaders = settings.FindProperty("m_AlwaysIncludedShaders");
-            bool included = false;
-            for (int i = shaders.arraySize - 1; i >= 0; i--)
+            foreach (var shader in new[]{Shader.Find("Standard"), AssetDatabase.LoadAssetAtPath<Shader>(VertexColorShader)})
             {
-                if (shaders.GetArrayElementAtIndex(i).objectReferenceValue != standard)
-                    continue;
-                if (!included)
+                bool included = false;
+                for (int i = shaders.arraySize - 1; i >= 0; i--)
                 {
-                    included = true;
-                    continue;
+                    if (shaders.GetArrayElementAtIndex(i).objectReferenceValue != shader)
+                        continue;
+                    if (!included)
+                    {
+                        included = true;
+                        continue;
+                    }
+
+                    shaders.GetArrayElementAtIndex(i).objectReferenceValue = null;
+                    shaders.DeleteArrayElementAtIndex(i);
                 }
 
-                shaders.GetArrayElementAtIndex(i).objectReferenceValue = null;
-                shaders.DeleteArrayElementAtIndex(i);
-            }
-
-            if (!included)
-            {
-                int size = shaders.arraySize;
-                shaders.InsertArrayElementAtIndex(size);
-                shaders.GetArrayElementAtIndex(size).objectReferenceValue = standard;
+                if (!included)
+                {
+                    int size = shaders.arraySize;
+                    shaders.InsertArrayElementAtIndex(size);
+                    shaders.GetArrayElementAtIndex(size).objectReferenceValue = shader;
+                }
             }
 
             changed |= settings.ApplyModifiedPropertiesWithoutUndo();
@@ -160,10 +181,23 @@ namespace PigeonSandbox.Editor
             Debug.Log("PIGEON MAC BENCHMARK BUILD PASSED");
         }
 
-        static void BuildPlayer(string[] scenes, string location, BuildOptions options)
+        // Development build of the benchmark as an Xcode project. Open Builds/iOSBenchmark/Unity-iPhone.xcodeproj,
+        // pick your team if PIGEON_APPLE_TEAM was not set, and run on a connected device. Results show on screen
+        // and in the Xcode console as the PIGEON BENCHMARK line.
+        [MenuItem("Pigeon Sandbox/Build iOS benchmark (Xcode project)")]
+        public static void BuildIOSBenchmark()
         {
-            var result = BuildPipeline.BuildPlayer(new BuildPlayerOptions{scenes = scenes, locationPathName = location, target = BuildTarget.StandaloneOSX, options = options});
-            Assert(result.summary.result == BuildResult.Succeeded, "Mac build failed: " + result.summary.result);
+            Verify();
+            EnsureScene(BenchmarkScene, true);
+            ConfigurePlayer();
+            BuildPlayer(new[]{BenchmarkScene}, "Builds/iOSBenchmark", BuildOptions.Development, BuildTarget.iOS);
+            Debug.Log("PIGEON IOS BENCHMARK PROJECT PASSED");
+        }
+
+        static void BuildPlayer(string[] scenes, string location, BuildOptions options, BuildTarget target = BuildTarget.StandaloneOSX)
+        {
+            var result = BuildPipeline.BuildPlayer(new BuildPlayerOptions{scenes = scenes, locationPathName = location, target = target, options = options});
+            Assert(result.summary.result == BuildResult.Succeeded, target + " build failed: " + result.summary.result);
         }
     }
 }

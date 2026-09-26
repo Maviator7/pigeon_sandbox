@@ -66,6 +66,12 @@ open -W -n "unity/PigeonSandbox/Builds/MacBenchmark/Pigeon Sandbox Benchmark.app
 grep "PIGEON BENCHMARK" ~/Library/Logs/PigeonSandbox/Pigeon\ Sandbox/Player.log
 ```
 
+### iOS実機での計測
+
+1. **Pigeon Sandbox > Build iOS benchmark (Xcode project)**（バッチは `BuildMac.BuildIOSBenchmark`）で `Builds/iOSBenchmark` にXcodeプロジェクトを作ります。
+2. `Builds/iOSBenchmark/Unity-iPhone.xcodeproj` をXcodeで開き、Signing & Capabilitiesで自分のTeamを選びます。バンドルIDが使えない場合は変更します。環境変数 `PIGEON_APPLE_TEAM`（Team ID）と `PIGEON_IOS_BUNDLE_ID` を設定してからビルドすると、プロジェクトに最初から反映されます。
+3. iPhoneを接続して実行します。約25秒で計測が終わり、画面左下と、Xcodeのコンソールの `PIGEON BENCHMARK` 行に結果が出ます。iOSではフレームレートの上限は画面のリフレッシュレートになります。
+
 ### 記録
 
 | 日付 | 変更 | 端末 | 平均FPS | フレーム時間 平均/p99/最大 (ms) | 描画呼び出し | GC確保 平均/最大 (KB/フレーム) |
@@ -73,6 +79,9 @@ grep "PIGEON BENCHMARK" ~/Library/Logs/PigeonSandbox/Pigeon\ Sandbox/Player.log
 | 2026-09-27 | 最適化前（v0.3.0） | Mac（M4 Max） | 104〜111 | 9.0〜9.6 / 18.0 / 44〜51 | 約2,890 | 131 / 425 |
 | 2026-09-27 | 施設の差分更新・共有マテリアル・Coreの確保削減 | Mac（M4 Max） | 116〜118 | 8.5〜8.6 / 17.0 / 22 | 約2,880 | 70 / 151 |
 | 2026-09-27 | 同上、UIなし（`-benchmark-no-ui`） | Mac（M4 Max） | 84〜85 | 11.7〜11.9 / 20〜21 / 29〜31 | 約2,710 | 4.1 / 58 |
+| 2026-09-27 | メッシュの焼き込み・ズーム連動の影 | Mac（M4 Max） | 194〜196 | 5.1〜5.2 / 14.9〜15.0 / 22〜23 | 1,340 | 70 / 151 |
+
+施設・地面・来訪者は1つずつ、鳩は動く部位ごとに、プリミティブを1枚のメッシュへ焼き込みます（`MeshBaker`）。色・つや・金属感は頂点に持たせ、共有シェーダー `PigeonSandbox/Vertex Color Lit` で描きます。最大マップのレンダラー数は約4,000から385になりました。影を描く距離はズームに合わせて変わり（全体表示では従来の70と同じ）、スマートフォンではハードシャドウ・1カスケード・中解像度にします。
 
 UIなしの計測は、GC確保のうち画面（IMGUI）以外が占める分を切り分けるためのものです。フレーム時間は実行ごとの揺れが大きいため、UIのありなしでは比べません。残りのGC確保（約66KB/フレーム）はIMGUIの画面によるもので、UIの作り直しで解消します。
 

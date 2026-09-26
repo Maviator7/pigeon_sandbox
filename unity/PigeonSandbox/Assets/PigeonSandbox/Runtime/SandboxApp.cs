@@ -88,10 +88,16 @@ namespace PigeonSandbox
             sun.type = LightType.Directional;
             sun.intensity = .85f;
             sun.color = new Color(1, .95f, .84f);
-            sun.shadows = LightShadows.Soft;
+            sun.shadows = Application.isMobilePlatform ? LightShadows.Hard : LightShadows.Soft;
             sun.shadowStrength = .55f;
             sun.transform.rotation = Quaternion.Euler(52, -35, 0);
-            QualitySettings.shadowDistance = 70;
+            if (Application.isMobilePlatform)
+            {
+                // One cascade at medium resolution keeps the shadow pass affordable on phones.
+                QualitySettings.shadowCascades = 1;
+                QualitySettings.shadowResolution = ShadowResolution.Medium;
+            }
+
             view = new GameObject("Town camera").AddComponent<Camera>();
             view.clearFlags = CameraClearFlags.SolidColor;
             view.backgroundColor = new Color(.76f, .8f, .71f);
@@ -133,6 +139,8 @@ namespace PigeonSandbox
             view.transform.position = focus + Quaternion.Euler(pitch, yaw, 0) * new Vector3(0, 0, -35);
             view.transform.LookAt(focus);
             view.orthographicSize = zoom;
+            // Shadows only need to reach what the orthographic view shows: equal to the old fixed 70 at the full-map overview, tighter when zoomed in.
+            QualitySettings.shadowDistance = 40 + zoom * 1.15f;
         }
 
         Rect CameraToolbar()
