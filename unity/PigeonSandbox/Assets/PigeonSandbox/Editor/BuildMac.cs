@@ -49,7 +49,9 @@ namespace PigeonSandbox.Editor
             for(int i=0;i<100;i++) a.AddFood(100,100);
             Assert(a.Seeds.Count==60,"Food capacity");
             foreach(var seed in a.Seeds) Assert(seed.X*seed.X+seed.Z*seed.Z<34,"Food bounds");
-            Debug.Log("PIGEON VERIFICATION PASSED: food, call, flight, bounds, determinism, capacity");
+            FriendshipChecks.Verify();
+            DaylightChecks.Verify();
+            Debug.Log("PIGEON VERIFICATION PASSED: food, call, flight, bounds, determinism, capacity, save JSON, daylight");
         }
         [MenuItem("Pigeon Sandbox/Create observation scene")]
         public static void Scene()
@@ -67,10 +69,23 @@ namespace PigeonSandbox.Editor
             PlayerSettings.resizableWindow=true;
             PlayerSettings.runInBackground=false;
             // Runtime procedural materials need this shader included in the player.
+            // Keep exactly one entry: this runs on every build and must not grow the list.
+            var standard=Shader.Find("Standard");
             var settings=new SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/GraphicsSettings.asset")[0]);
             var shaders=settings.FindProperty("m_AlwaysIncludedShaders");
-            int size=shaders.arraySize; shaders.InsertArrayElementAtIndex(size);
-            shaders.GetArrayElementAtIndex(size).objectReferenceValue=Shader.Find("Standard");
+            bool included=false;
+            for(int i=shaders.arraySize-1;i>=0;i--)
+            {
+                if(shaders.GetArrayElementAtIndex(i).objectReferenceValue!=standard) continue;
+                if(!included) { included=true; continue; }
+                shaders.GetArrayElementAtIndex(i).objectReferenceValue=null;
+                shaders.DeleteArrayElementAtIndex(i);
+            }
+            if(!included)
+            {
+                int size=shaders.arraySize; shaders.InsertArrayElementAtIndex(size);
+                shaders.GetArrayElementAtIndex(size).objectReferenceValue=standard;
+            }
             settings.ApplyModifiedPropertiesWithoutUndo();
             AssetDatabase.SaveAssets();
         }

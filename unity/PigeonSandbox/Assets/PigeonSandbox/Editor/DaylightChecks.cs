@@ -9,6 +9,8 @@ namespace PigeonSandbox.Editor
         {
             const BindingFlags flags=BindingFlags.Instance|BindingFlags.NonPublic;
             var root=new GameObject("Daylight verification");
+            // UpdateDaylight writes scene-wide lighting; restore it so the open scene is left untouched.
+            var ambientMode=RenderSettings.ambientMode; var ambientLight=RenderSettings.ambientLight;
             try
             {
                 var app=root.AddComponent<SandboxApp>();var camera=root.AddComponent<Camera>();var sun=root.AddComponent<Light>();
@@ -33,7 +35,11 @@ namespace PigeonSandbox.Editor
                 // Prevent the player-save quit callback from touching any real town.
                 typeof(SandboxApp).GetField("town",flags).SetValue(app,null);
             }
-            finally { UnityEngine.Object.DestroyImmediate(root); }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+                RenderSettings.ambientMode=ambientMode; RenderSettings.ambientLight=ambientLight;
+            }
         }
     }
 }
