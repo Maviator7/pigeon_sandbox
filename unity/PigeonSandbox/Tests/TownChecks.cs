@@ -390,6 +390,7 @@ public static class TownChecks
         WishChecks.RunAll();
         PerchChecks();
         FestivalChecks.RunAll();
+        SeasonChecks.RunAll();
         BenchmarkChecks.RunAll();
         ActivityChecks.RunAll();
         SaveStoreChecks.RunAll();

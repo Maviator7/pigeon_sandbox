@@ -135,6 +135,8 @@ namespace PigeonSandbox
         public FestivalKind SelectedFestival;
         public TownFestivalState Festival;
         public List<TownPostcard> Postcards;
+        public SeasonalFestivalState SeasonalFestival;
+        public List<SeasonalPostcard> SeasonalPostcards;
     }
 
     public partial class TownSimulation
@@ -271,7 +273,7 @@ namespace PigeonSandbox
 
         public TownSave Capture()
         {
-            var save = new TownSave{SaveVersion = CurrentSaveVersion, Wishes = CopyWishes(Wishes), Friendships = CopyFriendships(friendships), Money = Money, Time = Time, Purchases = Purchases, ExpansionLevel = ExpansionLevel, NestBoxes = NestBoxes, BathPriority = BathPriority, CafeSupport = CafeSupport, CompletedRequests = new bool[Requests.Count], NextFestivalDay = NextFestivalDay, SelectedFestival = SelectedFestival, Festival = CopyFestival(), Postcards = CopyPostcards(Postcards)};
+            var save = new TownSave{SaveVersion = CurrentSaveVersion, Wishes = CopyWishes(Wishes), Friendships = CopyFriendships(friendships), Money = Money, Time = Time, Purchases = Purchases, ExpansionLevel = ExpansionLevel, NestBoxes = NestBoxes, BathPriority = BathPriority, CafeSupport = CafeSupport, CompletedRequests = new bool[Requests.Count], NextFestivalDay = NextFestivalDay, SelectedFestival = SelectedFestival, Festival = CopyFestival(), Postcards = CopyPostcards(Postcards), SeasonalFestival = CopySeasonalFestival(seasonalFestival), SeasonalPostcards = CopySeasonalPostcards(SeasonalPostcards)};
             foreach (var f in Facilities)
                 save.Facilities.Add(new Facility{Id = f.Id, Kind = f.Kind, X = f.X, Z = f.Z, Level = f.Level});
             foreach (var b in Birds)
@@ -305,7 +307,7 @@ namespace PigeonSandbox
                     rares++;
             }
 
-            if (rares > 1 || !ValidFriendships(save) || !ValidWishes(save) || !ValidFestivalSave(save))
+            if (rares > 1 || !ValidFriendships(save) || !ValidWishes(save) || !ValidFestivalSave(save) || !ValidSeasonSave(save))
                 return false;
             var restoredFriendships = CopyFriendships(save.Friendships);
             friendships.Clear();
@@ -335,6 +337,7 @@ namespace PigeonSandbox
             Time = Math.Max(0, save.Time);
             Day = 1 + (int)(Time / DayLength);
             RestoreFestival(save);
+            RestoreSeasonalFestival(save);
             Purchases = Math.Max(0, save.Purchases);
             NestBoxes = save.NestBoxes;
             BathPriority = save.BathPriority;
@@ -362,7 +365,7 @@ namespace PigeonSandbox
             return new[]{"パン屋", "噴水", "集合住宅", "街路樹", "広場", "時計台", "オープンカフェ", "花壇の公園"}[(int)k];
         }
 
-        public const int CurrentSaveVersion = 1;
+        public const int CurrentSaveVersion = 2;
         public static string ActivityName(BirdActivity activity) => new[]{"散歩", "休憩", "水浴び", "食事", "羽繕い", "日向ぼっこ", "眺める", "テラスで休憩", "人と交流", "仲間と散歩", "再会のクルクル", "ごきげんクルクル", "ありがとうのクルクル"}[(int)activity];
         public static string PersonalityName(Personality p)
         {
@@ -641,7 +644,7 @@ namespace PigeonSandbox
             float score = -999;
             foreach (var f in Facilities)
             {
-                float s = (float)random.NextDouble() * 3 + WishPreference(b, f);
+                float s = (float)random.NextDouble() * 3 + WishPreference(b, f) + SeasonPreference(f.Kind);
                 // Routine is a preference, not an order: personality and ongoing activities remain intact.
                 if (TimeOfDay == TownTimeOfDay.Morning && (f.Kind == FacilityKind.Bakery || f.Kind == FacilityKind.Cafe))
                     s += 3;
@@ -747,6 +750,7 @@ namespace PigeonSandbox
             dt = Math.Min(dt, .25f);
             Time += dt;
             Day = 1 + (int)(Time / DayLength);
+            RefreshSeasonalFestival();
             spawnClock += dt;
             upkeepClock += dt;
             growthClock += dt;
@@ -911,6 +915,7 @@ namespace PigeonSandbox
                         Purchases++;
                         v.Action = target.Kind == FacilityKind.Cafe ? "カフェでひと休み" : "パンを購入！";
                         WitnessFestivalPurchase(target);
+                        WitnessSeasonalPurchase(target);
                     }
                     else
                         v.Action = "公園でひと休み";
@@ -923,6 +928,7 @@ namespace PigeonSandbox
 
             TickWishes(dt);
             TickFestival();
+            TickSeasonalFestival();
             int capacity = 4 + Levels(FacilityKind.Housing) * 2 + (NestBoxes ? 2 : 0);
             if (growthClock >= 32)
             {

@@ -22,6 +22,9 @@ namespace PigeonSandbox
         bool paused;
         int postcardCount;
         int postcardPage;
+        int seasonalPostcardCount, seasonalPostcardPage;
+        TownSeason displayedSeason;
+        float seasonToastUntil;
         FacilityKind building = FacilityKind.Bakery;
         enum Tool
         {
@@ -70,6 +73,15 @@ namespace PigeonSandbox
             {
                 town = TownSimulation.CreateBenchmark();
                 hideUi = Array.IndexOf(Environment.GetCommandLineArgs(), "-benchmark-no-ui") >= 0;
+                foreach (string arg in Environment.GetCommandLineArgs())
+                    if (arg.StartsWith("-benchmark-day=", StringComparison.Ordinal) && int.TryParse(arg.Substring(15), out int day) && day >= 1)
+                    {
+                        town.Day = day;
+                        town.Time = (day - 1) * TownSimulation.DayLength;
+                    }
+
+                if (Array.IndexOf(Environment.GetCommandLineArgs(), "-benchmark-boundary") >= 0)
+                    town.Time += TownSimulation.DayLength - 7;
                 message = "ベンチマーク用の街です。変更は保存されません。";
             }
             else
@@ -79,6 +91,8 @@ namespace PigeonSandbox
             }
 
             postcardCount = town.Postcards.Count;
+            seasonalPostcardCount = town.SeasonalPostcards.Count;
+            displayedSeason = town.Season;
             zoom = targetZoom = 14 + town.ExpansionLevel * 3;
             world = new GameObject("Mayor town").AddComponent<TownWorld>();
             world.Initialize();
@@ -121,16 +135,20 @@ namespace PigeonSandbox
             float phase = town.DayProgress * 3;
             int from = Mathf.Min(2, (int)phase), to = (from + 1) % 3;
             float blend = Mathf.SmoothStep(0, 1, phase - from);
-            sun.color = Color.Lerp(DaylightSun[from], DaylightSun[to], blend);
+            int season = (int)town.Season;
+            sun.color = Color.Lerp(Color.Lerp(DaylightSun[from], DaylightSun[to], blend), SeasonalSun[season], .17f);
             sun.intensity = Mathf.Lerp(DaylightIntensity[from], DaylightIntensity[to], blend);
-            RenderSettings.ambientLight = Color.Lerp(DaylightAmbient[from], DaylightAmbient[to], blend);
-            view.backgroundColor = Color.Lerp(DaylightSky[from], DaylightSky[to], blend);
+            RenderSettings.ambientLight = Color.Lerp(Color.Lerp(DaylightAmbient[from], DaylightAmbient[to], blend), SeasonalAmbient[season], .24f);
+            view.backgroundColor = Color.Lerp(Color.Lerp(DaylightSky[from], DaylightSky[to], blend), SeasonalSky[season], .3f);
         }
 
         static readonly Color[] DaylightSun = {new Color(1, .94f, .81f), new Color(1, .98f, .92f), new Color(1, .77f, .59f)};
         static readonly Color[] DaylightAmbient = {new Color(.72f, .75f, .7f), new Color(.76f, .79f, .74f), new Color(.75f, .7f, .65f)};
         static readonly Color[] DaylightSky = {new Color(.76f, .8f, .71f), new Color(.76f, .82f, .77f), new Color(.85f, .75f, .66f)};
         static readonly float[] DaylightIntensity = {.82f, .9f, .76f};
+        static readonly Color[] SeasonalSun = {new Color(1, .93f, .87f), new Color(1, .98f, .85f), new Color(1, .81f, .66f), new Color(.85f, .91f, 1)};
+        static readonly Color[] SeasonalAmbient = {new Color(.78f, .78f, .73f), new Color(.72f, .8f, .74f), new Color(.8f, .73f, .64f), new Color(.73f, .77f, .79f)};
+        static readonly Color[] SeasonalSky = {new Color(.83f, .83f, .78f), new Color(.72f, .83f, .79f), new Color(.85f, .75f, .65f), new Color(.83f, .86f, .87f)};
         void CameraPosition()
         {
             var l = Layout(Width, Height);
@@ -482,6 +500,13 @@ namespace PigeonSandbox
             if (!paused)
                 for (int i = 0; i < speed; i++)
                     town.Tick(Mathf.Min(UnityEngine.Time.deltaTime, .1f));
+            if (town.Season != displayedSeason)
+            {
+                displayedSeason = town.Season;
+                seasonToastUntil = UnityEngine.Time.realtimeSinceStartup + 5;
+                message = town.SeasonName + "になりました。街と鳩の過ごし方を眺めてみましょう。";
+            }
+
             world.Sync(town, paused);
             UpdateDaylight();
             if (town.Postcards.Count > postcardCount)
@@ -491,6 +516,16 @@ namespace PigeonSandbox
                 message = town.Notice;
                 tab = 3;
                 scroll = new Vector2(0, 420);
+                Save(false);
+            }
+
+            if (town.SeasonalPostcards.Count > seasonalPostcardCount)
+            {
+                seasonalPostcardCount = town.SeasonalPostcards.Count;
+                seasonalPostcardPage = 0;
+                message = town.Notice;
+                tab = 3;
+                scroll = Vector2.zero;
                 Save(false);
             }
 
@@ -660,7 +695,7 @@ namespace PigeonSandbox
             Meter(785, 23, 140, "人の満足", town.HumanSatisfaction);
             float residentX = Mathf.Min(965, w - 470);
             float residentBottom = FlowLabel(residentX, 18, 210, "住民 " + town.Birds.Count + "羽 / 来訪 " + town.Visitors.Count + "人", text);
-            FlowLabel(residentX, residentBottom, 210, "DAY " + town.Day + " · " + town.TimeOfDayName + " · 購買 " + town.Purchases + "回", small);
+            FlowLabel(residentX, residentBottom, 210, "" + town.Year + "年目 " + town.SeasonName + town.SeasonDay + "日 · DAY " + town.Day + " · " + town.TimeOfDayName, small);
             float speedW = 104, pauseW = 94, controlGap = 10, speedX = w - 24 - speedW, pauseX = speedX - controlGap - pauseW;
             if (Button(new Rect(pauseX, 25, pauseW, 45), paused ? "再開" : "一時停止", paused))
                 paused = !paused;
@@ -672,6 +707,12 @@ namespace PigeonSandbox
             BottomPanel(l);
             FocusMarker();
             CameraControls();
+            if (seasonToastUntil > UnityEngine.Time.realtimeSinceStartup)
+            {
+                float toastW = 290, toastX = l.center.x + (l.center.width - toastW) / 2;
+                Panel(new Rect(toastX, l.center.y + 14, toastW, 52), paper);
+                FlowLabel(toastX + 12, l.center.y + 23, toastW - 24, town.SeasonName + "がやってきました", heading);
+            }
         }
 
         void LeftPanel(UiLayout l)
@@ -843,7 +884,8 @@ namespace PigeonSandbox
 
         float FestivalContent(float width, bool draw)
         {
-            float y = FlowLabel(0, 0, width, "街の催し", heading, draw) + 4;
+            float y = SeasonalContent(width, draw) + 24;
+            y = FlowLabel(0, y, width, "街の催し", heading, draw) + 4;
             y = FlowLabel(0, y, width, "3日ごとに開けます。施設の配置と、鳩や人の実際の行動で絵はがきが届きます。", small, draw) + 8;
             string calendar = town.FestivalActive ? "ただいま開催中" : town.FestivalDue ? "開催できます！" : "次の開催は DAY " + town.NextFestivalDay;
             y = FlowLabel(0, y, width, calendar, text, draw) + 9;
@@ -954,6 +996,109 @@ namespace PigeonSandbox
             }
 
             return y;
+        }
+
+        float SeasonalContent(float width, bool draw)
+        {
+            var season = town.Season;
+            float y = FlowLabel(0, 0, width, "季節の催し · " + town.SeasonName, heading, draw) + 4;
+            string seasonClock = town.SeasonDaysRemaining == 0 ? "今季の最終日" : "あと" + town.SeasonDaysRemaining + "日";
+            y = FlowLabel(0, y, width, town.Year + "年目 / " + seasonClock + "。逃しても来年また楽しめます。", small, draw) + 8;
+            y = FlowLabel(0, y, width, TownSimulation.SeasonalFestivalName(season), heading, draw) + 3;
+            y = FlowLabel(0, y, width, "会場：" + TownSimulation.SeasonalVenueHint(season), small, draw);
+            y = FlowLabel(0, y, width, town.SeasonalVenueReady ? "✓ 会場が整っています" : "○ 会場を整えると観察できます", small, draw) + 7;
+            string action = season == TownSeason.Spring ? "鳩が公園で羽繕いか日向ぼっこ" : season == TownSeason.Summer ? "鳩が噴水で水浴び" : season == TownSeason.Autumn ? "鳩がパン屋で食事" : "鳩が木で休憩";
+            y = FlowLabel(0, y, width, (town.SeasonalBirdObserved ? "✓ " : "○ ") + action, text, draw);
+            if (season == TownSeason.Autumn)
+                y = FlowLabel(0, y, width, (town.SeasonalHumanPurchase ? "✓ " : "○ ") + "人がパン屋で買い物", text, draw);
+            y = FlowLabel(0, y, width, town.SeasonalEventCompleted ? "今季の絵はがきが届きました！" : "鳩たちを眺めて完成を待ちましょう。", small, draw) + 14;
+            y = FlowLabel(0, y, width, "季節の絵はがき  " + town.SeasonalPostcards.Count + "枚", heading, draw) + 7;
+            const int cardsPerPage = 4;
+            int lastPage = Mathf.Max(0, (town.SeasonalPostcards.Count - 1) / cardsPerPage);
+            int page = Mathf.Min(seasonalPostcardPage, lastPage);
+            if (town.SeasonalPostcards.Count == 0)
+                y = FlowLabel(0, y, width, "最初の一枚には、参加した鳩の名前が残ります。", small, draw) + 4;
+            for (int i = town.SeasonalPostcards.Count - 1 - page * cardsPerPage; i >= 0 && i > town.SeasonalPostcards.Count - 1 - (page + 1) * cardsPerPage; i--)
+            {
+                var card = town.SeasonalPostcards[i];
+                float start = y, captionW = width - 94;
+                string cardTitle = card.Year + "年目 · " + TownSimulation.SeasonalFestivalName(card.Season);
+                float cy = FlowLabel(82, y + 12, captionW, cardTitle, text, false);
+                cy = FlowLabel(82, cy, captionW, "DAY " + card.Day, small, false);
+                cy = FlowLabel(13, Mathf.Max(cy, start + 78), width - 26, "参加：" + string.Join("、", card.BirdNames.ToArray()), small, false);
+                if (draw)
+                {
+                    Panel(new Rect(0, start, width, cy - start + 8), new Color(.91f, .93f, .86f));
+                    Panel(new Rect(0, start, 5, cy - start + 8), green);
+                    GUI.DrawTexture(new Rect(12, start + 12, 60, 60), SeasonalPortrait(card.Season));
+                    float py = FlowLabel(82, start + 12, captionW, cardTitle, text);
+                    py = FlowLabel(82, py, captionW, "DAY " + card.Day, small);
+                    FlowLabel(13, Mathf.Max(py, start + 78), width - 26, "参加：" + string.Join("、", card.BirdNames.ToArray()), small);
+                }
+
+                y = cy + 19;
+            }
+
+            if (town.SeasonalPostcards.Count > cardsPerPage)
+            {
+                float half = (width - 8) / 2;
+                if (draw && Button(new Rect(0, y, half, 42), "新しい方へ", false, page > 0))
+                {
+                    seasonalPostcardPage = page - 1;
+                    scroll = Vector2.zero;
+                }
+
+                if (draw && Button(new Rect(half + 8, y, half, 42), "古い方へ", false, page < lastPage))
+                {
+                    seasonalPostcardPage = page + 1;
+                    scroll = Vector2.zero;
+                }
+
+                y += 56;
+            }
+
+            return y;
+        }
+
+        readonly Texture2D[] seasonalPortraits = new Texture2D[4];
+        Texture2D SeasonalPortrait(TownSeason season)
+        {
+            int index = (int)season;
+            if (seasonalPortraits[index] != null)
+                return seasonalPortraits[index];
+            var texture = new Texture2D(64, 64);
+            texture.filterMode = FilterMode.Point;
+            var pixels = new Color[64 * 64];
+            Color sky = new[]{new Color(.94f, .82f, .83f), new Color(.65f, .84f, .84f), new Color(.91f, .72f, .52f), new Color(.79f, .86f, .89f)}[index];
+            Color ground = new[]{new Color(.75f, .83f, .65f), new Color(.55f, .76f, .61f), new Color(.73f, .66f, .47f), new Color(.82f, .84f, .77f)}[index];
+            Color accent = new[]{new Color(.88f, .48f, .58f), new Color(.27f, .63f, .7f), new Color(.7f, .38f, .2f), new Color(.5f, .55f, .56f)}[index];
+            Color bird = new Color(.33f, .4f, .44f);
+            for (int py = 0; py < 64; py++)
+                for (int px = 0; px < 64; px++)
+                {
+                    Color color = py < 18 ? ground : sky;
+                    int dx = px - 39, dy = py - 25;
+                    if (dx * dx / 140f + dy * dy / 68f < 1 || (px - 47) * (px - 47) + (py - 34) * (py - 34) < 37)
+                        color = bird;
+                    if (px >= 51 && px <= 57 && py >= 33 && py <= 36)
+                        color = new Color(.86f, .7f, .47f);
+                    if (index == 0 && (px - 17) * (px - 17) + (py - 43) * (py - 43) < 135)
+                        color = accent;
+                    if (index == 1 && (px - 18) * (px - 18) / 200f + (py - 21) * (py - 21) / 30f < 1)
+                        color = accent;
+                    if (index == 2 && px > 10 && px < 25 && py > 38 && py < 49 && py < 49 - Math.Abs(px - 17) * .55f)
+                        color = accent;
+                    if (index == 3 && px >= 15 && px <= 18 && py >= 18 && py <= 46)
+                        color = accent;
+                    if (index == 3 && py >= 38 && py <= 41 && px >= 8 && px <= 28)
+                        color = accent;
+                    pixels[py * 64 + px] = color;
+                }
+
+            texture.SetPixels(pixels);
+            texture.Apply();
+            seasonalPortraits[index] = texture;
+            return texture;
         }
 
         readonly Texture2D[] festivalPortraits = new Texture2D[3];

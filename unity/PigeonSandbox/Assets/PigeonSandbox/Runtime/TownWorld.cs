@@ -11,6 +11,7 @@ namespace PigeonSandbox
             public GameObject Root;
             public FacilityKind Kind;
             public int Level;
+            public TownSeason Season;
         }
 
         readonly Dictionary<int, FacilityView> buildings = new Dictionary<int, FacilityView>();
@@ -30,6 +31,7 @@ namespace PigeonSandbox
         readonly Dictionary<int, Vector3> previous = new Dictionary<int, Vector3>();
         Transform preview;
         int revision = -1;
+        bool seasonalRebuildPending;
         public void Initialize()
         {
             preview = new GameObject("Plot cursor").transform;
@@ -46,9 +48,11 @@ namespace PigeonSandbox
 
         Transform terrain;
         int terrainRadius = -1;
-        void ResizeTerrain(int radius)
+        TownSeason renderSeason;
+        TownSeason terrainSeason;
+        void ResizeTerrain(int radius, TownSeason season)
         {
-            if (terrainRadius == radius)
+            if (terrainRadius == radius && terrainSeason == season)
                 return;
             if (terrain != null)
             {
@@ -59,6 +63,7 @@ namespace PigeonSandbox
             terrain = new GameObject("Town ground").transform;
             terrain.SetParent(transform, false);
             terrainRadius = radius;
+            terrainSeason = season;
             float edge = (radius + .73f) * 2.2f;
             Shape("Town island", PrimitiveType.Cube, terrain, new Vector3(0, -.46f, 0), new Vector3((radius * 2 + 2) * 2.2f, .8f, (radius * 2 + 2) * 2.2f), "A6B29A");
             for (int x = -radius; x <= radius; x++)
@@ -78,6 +83,92 @@ namespace PigeonSandbox
         }
 
         static Material Mat(string hex) => MaterialCache.Get(hex);
+        string SeasonalColor(string hex)
+        {
+            if (renderSeason == TownSeason.Spring)
+            {
+                switch (hex)
+                {
+                    case "A6B29A":
+                        return "B4BEA3";
+                    case "DFDDCB":
+                        return "E9E6D2";
+                    case "D8D8C5":
+                        return "E2E2CC";
+                    case "77986E":
+                        return "8FAF85";
+                    case "94AC7F":
+                        return "A2B98B";
+                    case "D6A58E":
+                        return "D994A5";
+                    case "E8CC81":
+                        return "F1CE8A";
+                }
+            }
+            else if (renderSeason == TownSeason.Summer)
+            {
+                switch (hex)
+                {
+                    case "A6B29A":
+                        return "A2B599";
+                    case "DFDDCB":
+                        return "E5E3C8";
+                    case "D8D8C5":
+                        return "DCDFC1";
+                    case "77986E":
+                        return "648C68";
+                    case "94AC7F":
+                        return "82A672";
+                    case "70ABA9":
+                        return "69B9BC";
+                }
+            }
+            else if (renderSeason == TownSeason.Autumn)
+            {
+                switch (hex)
+                {
+                    case "A6B29A":
+                        return "B4AB8C";
+                    case "DFDDCB":
+                        return "E5DCC4";
+                    case "D8D8C5":
+                        return "DED4BD";
+                    case "77986E":
+                        return "BE875D";
+                    case "94AA80":
+                        return "B6A47E";
+                    case "94AC7F":
+                        return "B7A47B";
+                    case "668966":
+                        return "9B845B";
+                    case "D6A58E":
+                        return "D1A575";
+                    case "E8CC81":
+                        return "DDB96F";
+                }
+            }
+            else if (renderSeason == TownSeason.Winter)
+            {
+                switch (hex)
+                {
+                    case "A6B29A":
+                        return "AFB9AD";
+                    case "DFDDCB":
+                        return "E9E8DC";
+                    case "D8D8C5":
+                        return "E1E4D9";
+                    case "94AA80":
+                        return "B5B9A1";
+                    case "94AC7F":
+                        return "B5BCA8";
+                    case "668966":
+                        return "8A9984";
+                }
+            }
+
+            return hex;
+        }
+
         Transform Shape(string name, PrimitiveType type, Transform parent, Vector3 pos, Vector3 scale, string color)
         {
             var obj = GameObject.CreatePrimitive(type);
@@ -85,7 +176,7 @@ namespace PigeonSandbox
             obj.transform.SetParent(parent, false);
             obj.transform.localPosition = pos;
             obj.transform.localScale = scale;
-            obj.GetComponent<Renderer>().sharedMaterial = Mat(color);
+            obj.GetComponent<Renderer>().sharedMaterial = Mat(SeasonalColor(color));
             MaterialCache.Release(obj.GetComponent<Collider>());
             return obj.transform;
         }
@@ -141,8 +232,17 @@ namespace PigeonSandbox
             else if (f.Kind == FacilityKind.Tree)
             {
                 Shape("Garden", PrimitiveType.Cylinder, p, new Vector3(0, .055f, 0), new Vector3(1.95f, .055f, 1.95f), "94AA80");
-                Shape("Trunk", PrimitiveType.Cylinder, p, new Vector3(0, .7f, 0), new Vector3(.18f, .7f, .18f), "896D51");
-                Shape("Canopy", PrimitiveType.Sphere, p, new Vector3(0, 1.75f, 0), new Vector3(1.25f, 1.65f, 1.25f), "77986E");
+                Shape("Trunk", PrimitiveType.Cylinder, p, renderSeason == TownSeason.Winter ? new Vector3(0, 1.25f, 0) : new Vector3(0, .7f, 0), renderSeason == TownSeason.Winter ? new Vector3(.18f, 1.25f, .18f) : new Vector3(.18f, .7f, .18f), "896D51");
+                if (renderSeason == TownSeason.Winter)
+                {
+                    Shape("Winter branch", PrimitiveType.Cube, p, new Vector3(-.31f, 1.5f, 0), new Vector3(.72f, .09f, .09f), "896D51");
+                    Shape("Winter branch", PrimitiveType.Cube, p, new Vector3(.32f, 1.92f, 0), new Vector3(.64f, .09f, .09f), "896D51");
+                    Shape("Winter branch", PrimitiveType.Cube, p, new Vector3(0, 1.65f, .26f), new Vector3(.09f, .09f, .58f), "896D51");
+                    Shape("Winter perch", PrimitiveType.Cube, p, new Vector3(0, 2.45f, 0), new Vector3(1.1f, .12f, .12f), "896D51");
+                    Shape("Winter perch", PrimitiveType.Cube, p, new Vector3(0, 2.45f, 0), new Vector3(.12f, .12f, 1.1f), "896D51");
+                }
+                else
+                    Shape("Canopy", PrimitiveType.Sphere, p, new Vector3(0, 1.75f, 0), new Vector3(1.25f, 1.65f, 1.25f), "77986E");
                 Bench(p, new Vector3(0, .12f, -.68f));
             }
             else if (f.Kind == FacilityKind.Plaza)
@@ -178,8 +278,9 @@ namespace PigeonSandbox
                     float x = side * .73f;
                     Shape("Flowerbed border", PrimitiveType.Cube, p, new Vector3(x, .13f, -.2f), new Vector3(.4f, .18f, .9f), "AF8A68");
                     Shape("Flowerbed leaves", PrimitiveType.Cube, p, new Vector3(x, .24f, -.2f), new Vector3(.34f, .1f, .78f), "668966");
-                    for (int i = 0; i < 2; i++)
-                        Shape("Flower", PrimitiveType.Sphere, p, new Vector3(x, .32f, -.43f + i * .44f), new Vector3(.22f, .1f, .22f), side < 0 ? "D6A58E" : "E8CC81");
+                    if (renderSeason != TownSeason.Winter)
+                        for (int i = 0; i < 2; i++)
+                            Shape("Flower", PrimitiveType.Sphere, p, new Vector3(x, .32f, -.43f + i * .44f), new Vector3(.22f, .1f, .22f), side < 0 ? "D6A58E" : "E8CC81");
                 }
             }
             else
@@ -200,21 +301,30 @@ namespace PigeonSandbox
         }
 
         static Vector3 FacilityPosition(Facility f) => new Vector3(f.X * 2.2f, 0, f.Z * 2.2f);
-        void SyncFacilities(TownSimulation town)
+        bool SyncFacilities(TownSimulation town, int rebuildBudget)
         {
             liveIds.Clear();
+            int rebuilt = 0;
+            bool pending = false;
             foreach (var f in town.Facilities)
             {
                 liveIds.Add(f.Id);
-                if (buildings.TryGetValue(f.Id, out var view) && view.Kind == f.Kind && view.Level == f.Level)
+                if (buildings.TryGetValue(f.Id, out var view) && view.Kind == f.Kind && view.Level == f.Level && view.Season == renderSeason)
                 {
                     view.Root.transform.localPosition = FacilityPosition(f);
                     continue;
                 }
 
+                if (rebuilt >= rebuildBudget)
+                {
+                    pending = true;
+                    continue;
+                }
+
                 if (view != null)
                     MeshBaker.Release(view.Root);
-                buildings[f.Id] = new FacilityView{Root = FacilityModel(f), Kind = f.Kind, Level = f.Level};
+                buildings[f.Id] = new FacilityView{Root = FacilityModel(f), Kind = f.Kind, Level = f.Level, Season = renderSeason};
+                rebuilt++;
             }
 
             staleIds.Clear();
@@ -226,6 +336,8 @@ namespace PigeonSandbox
                 MeshBaker.Release(buildings[id].Root);
                 buildings.Remove(id);
             }
+
+            return pending;
         }
 
         public GameObject FacilityObject(int id) => buildings.TryGetValue(id, out var view) ? view.Root : null;
@@ -239,10 +351,14 @@ namespace PigeonSandbox
 
         public void Sync(TownSimulation town, bool paused)
         {
-            ResizeTerrain(town.MapRadius);
-            if (revision != town.Revision)
+            bool seasonChanged = renderSeason != town.Season;
+            renderSeason = town.Season;
+            ResizeTerrain(town.MapRadius, renderSeason);
+            if (seasonChanged)
+                seasonalRebuildPending = true;
+            if (revision != town.Revision || seasonalRebuildPending)
             {
-                SyncFacilities(town);
+                seasonalRebuildPending = SyncFacilities(town, seasonalRebuildPending ? 8 : int.MaxValue);
                 revision = town.Revision;
             }
 

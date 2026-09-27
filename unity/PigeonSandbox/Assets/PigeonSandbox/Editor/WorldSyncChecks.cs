@@ -28,6 +28,7 @@ namespace PigeonSandbox.Editor
                 world.Sync(town, true);
                 int built = world.FacilityModelsBuilt;
                 Check(built == town.Facilities.Count, "first sync builds every facility");
+                Color springGround = world.transform.Find("Town ground").GetComponent<MeshFilter>().sharedMesh.colors[0];
                 var bakery = town.At(1, 0);
                 var fountain = town.At(2, 0);
                 var bakeryObject = world.FacilityObject(bakery.Id);
@@ -43,12 +44,39 @@ namespace PigeonSandbox.Editor
                 world.Sync(town, true);
                 Check(world.FacilityModelsBuilt == built + 1 && world.FacilityObject(fountain.Id) != fountainObject, "upgrade rebuilds only that facility");
                 Check(world.FacilityObject(bakery.Id) == bakeryObject, "upgrade leaves other facilities alone");
+                var summer = town.Capture();
+                summer.Time = 15 * TownSimulation.DayLength;
+                Check(town.Restore(summer), "advance town to summer");
+                int beforeSeason = world.FacilityModelsBuilt;
+                world.Sync(town, true);
+                Check(world.FacilityModelsBuilt == beforeSeason + town.Facilities.Count, "season change rebuilds each facility once");
+                Color summerGround = world.transform.Find("Town ground").GetComponent<MeshFilter>().sharedMesh.colors[0];
+                Check(summerGround != springGround, "summer ground differs from spring ground");
+                world.Sync(town, true);
+                Check(world.FacilityModelsBuilt == beforeSeason + town.Facilities.Count, "same season does not rebuild again");
                 Check(town.Remove(bakery.Id), "remove bakery");
                 world.Sync(town, true);
                 Check(world.FacilityObject(bakery.Id) == null && bakeryObject == null, "removed facility object is destroyed");
+                Check(town.Build(FacilityKind.Tree, 1, 0), "build winter perch tree");
+                world.Sync(town, true);
+                var winter = town.Capture();
+                winter.Time = 45 * TownSimulation.DayLength;
+                Check(town.Restore(winter), "advance town to winter");
+                world.Sync(town, true);
+                var tree = town.At(1, 0);
+                Check(world.FacilityObject(tree.Id).GetComponent<MeshFilter>().sharedMesh.bounds.max.y >= 2.5f, "winter tree supports a perched pigeon");
                 // Many identical pigeons and facilities must still share a small set of materials.
                 var full = TownSimulation.CreateBenchmark();
                 world.Sync(full, true);
+                int beforeFullSeason = world.FacilityModelsBuilt;
+                var fullSummer = full.Capture();
+                fullSummer.Time = 15 * TownSimulation.DayLength;
+                Check(full.Restore(fullSummer), "advance full town to summer");
+                world.Sync(full, true);
+                Check(world.FacilityModelsBuilt - beforeFullSeason <= 8, "season transition spreads large rebuild across frames");
+                for (int i = 0; i < 40; i++)
+                    world.Sync(full, true);
+                Check(world.FacilityModelsBuilt == beforeFullSeason + full.Facilities.Count, "full town finishes seasonal rebuild");
                 var shared = new HashSet<Material>();
                 foreach (var renderer in root.GetComponentsInChildren<Renderer>(true))
                     shared.Add(renderer.sharedMaterial);
