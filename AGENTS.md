@@ -10,6 +10,7 @@
 - Macビルド: Editorメニュー `Pigeon Sandbox > Build Mac app`。バッチ実行は `-executeMethod PigeonSandbox.Editor.BuildMac.Build`。
 - ベンチマーク: `Pigeon Sandbox > Build Mac benchmark`（バッチは `BuildMac.BuildBenchmark`）で `Builds/MacBenchmark/` にDevelopment Buildを作る。`open -W -n "unity/PigeonSandbox/Builds/MacBenchmark/Pigeon Sandbox Benchmark.app" --args -benchmark-quit` で実行し、`~/Library/Logs/PigeonSandbox/Pigeon Sandbox/Player.log` の `PIGEON BENCHMARK` 行を読む。`-benchmark-no-ui` を加えると画面を描かずに計測する（zshでは引数を1つずつ書く）。
 - iOSベンチマーク: `Pigeon Sandbox > Build iOS benchmark (Xcode project)`（バッチは `BuildMac.BuildIOSBenchmark`）で `Builds/iOSBenchmark` にXcodeプロジェクトを作り、実機で実行する。`PIGEON_APPLE_TEAM`（そのビルドだけに適用し、`ProjectSettings` には保存しない）・`PIGEON_IOS_BUNDLE_ID` で署名チームとバンドルIDを指定できる。ベンチマーク用のビルドは60Hzの上限を外す。署名・インストール・実行の手順はUnity版READMEを参照。
+- UIフォント: 同梱フォントはサブセット。UIに文字列を追加したら `python3 unity/PigeonSandbox/Tools/subset_font.py`（fontTools）で再生成する。
 - 旧Web試作（参考資料・保守対象外）: `npm install`、`npm run dev`、`npm run build`、`npm test`。
 
 ## 構成と規約
@@ -20,6 +21,7 @@
 - `unity/PigeonSandbox/Tests`: Coreのテスト。新しいファイルは `verify.py` が自動で拾う。エントリは `TownChecks.Main`。
 - `unity/PigeonSandbox/Tools`: 開発用スクリプト（Unityのビルド対象外）。
 - 旧Web試作（`src/`、`tests/`、`public/`、`docs/model-guide.md`、`docs/verification.md`）は参考資料として残し、変更しない。
+- 鳩の行動は `BirdActivity` で判定し、表示用の文字列（`Action`）と比較しない。保存形式を変えたら `TownSimulation.CurrentSaveVersion` を上げる。
 - C#は `Tools/format.py` の書式に揃える。Coreの変更にはテストを添える。
 - 性能目標: iPhone 15相当、最大マップ（17×17・鳩15羽）で60fps。性能に関わる変更はベンチマークの前後比較を残す。
 - ビルドでシーンや `ProjectSettings` に差分を出さない（シーンは存在しないときだけ生成）。

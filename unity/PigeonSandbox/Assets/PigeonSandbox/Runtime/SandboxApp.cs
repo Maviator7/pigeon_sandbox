@@ -202,9 +202,10 @@ namespace PigeonSandbox
         {
             if (!string.IsNullOrEmpty(Input.compositionString))
                 return;
-            if (!town.RenameBird(editingBird, nameDraft))
+            // The shipped font is a subset (kana, ASCII, Jōyō kanji and game text); refuse names it cannot draw.
+            if (!town.RenameBird(editingBird, nameDraft, ch => font != null && font.HasCharacter(ch)))
             {
-                nameError = "1〜24文字で入力してください。改行は使えません。";
+                nameError = "1〜24文字で入力してください。絵文字や一部の漢字、改行は使えません。";
                 return;
             }
 
@@ -231,7 +232,7 @@ namespace PigeonSandbox
             }
 
             y += 50;
-            y = FlowLabel(0, y, width, "名前は1〜24文字 · 同じ名前もOK", small, draw);
+            y = FlowLabel(0, y, width, "名前は1〜24文字（かな・常用漢字・英数字など） · 同じ名前もOK", small, draw);
             float half = (width - 8) / 2;
             if (draw && Button(new Rect(0, y, half, 40), "保存", true))
                 ConfirmRename();

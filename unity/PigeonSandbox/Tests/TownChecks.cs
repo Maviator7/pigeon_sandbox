@@ -86,6 +86,12 @@ public static class TownChecks
         Check(!named.RenameBird(-1, "ぽっぽ"), "unknown bird rename rejected");
         Check(named.RenameBird(birdId, "  もち 🕊  ") && named.Birds[0].Name == "もち 🕊", "Japanese and emoji rename trims whitespace");
         Check(named.RenameBird(named.Birds[1].Id, "もち 🕊"), "duplicate names allowed for distinct birds");
+        // With a glyph check (the shipped font), names must be displayable: no emoji or kanji outside the font.
+        Func<char, bool> font = ch => ch < 0x80 || "もちまめ".IndexOf(ch) >= 0;
+        var fontTown = new TownSimulation(4);
+        int fontBird = fontTown.Birds[0].Id;
+        Check(fontTown.RenameBird(fontBird, "まめ 2", font) && fontTown.Birds[0].Name == "まめ 2", "displayable name accepted with glyph check");
+        Check(!fontTown.RenameBird(fontBird, "まめ🕊", font) && !fontTown.RenameBird(fontBird, "鰯", font) && fontTown.Birds[0].Name == "まめ 2", "undisplayable characters rejected without changing the name");
         var namedRestore = new TownSimulation();
         Check(namedRestore.Restore(named.Capture()) && namedRestore.Birds[0].Id == birdId && namedRestore.Birds[0].Name == "もち 🕊", "renamed bird survives save and restore");
         var cheerful = new TownSimulation(42);

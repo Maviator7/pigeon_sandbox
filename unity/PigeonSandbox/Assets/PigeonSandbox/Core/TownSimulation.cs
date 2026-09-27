@@ -251,7 +251,8 @@ namespace PigeonSandbox
         }
 
         public const int MaxBirdNameLength = 24;
-        public bool RenameBird(int id, string name)
+        // displayable: glyph check for the UI font. Characters it lacks (emoji, kanji outside the subset) are refused.
+        public bool RenameBird(int id, string name, Func<char, bool> displayable = null)
         {
             if (string.IsNullOrWhiteSpace(name))
                 return false;
@@ -259,7 +260,7 @@ namespace PigeonSandbox
             if (new System.Globalization.StringInfo(name).LengthInTextElements > MaxBirdNameLength)
                 return false;
             foreach (char ch in name)
-                if (char.IsControl(ch) || ch == '\u2028' || ch == '\u2029')
+                if (char.IsControl(ch) || ch == '\u2028' || ch == '\u2029' || displayable != null && (char.IsSurrogate(ch) || !displayable(ch)))
                     return false;
             var bird = Birds.Find(b => b.Id == id);
             if (bird == null)
