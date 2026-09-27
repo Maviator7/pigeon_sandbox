@@ -3,21 +3,24 @@ using UnityEngine;
 
 namespace PigeonSandbox.Editor
 {
-    // The shipped font is a subset (Tools/subset_font.py); renaming relies on Font.HasCharacter to match it.
+    // The shipped font is a subset (Tools/subset_font.py). Font.HasCharacter also reports OS fallback glyphs,
+    // so renaming checks names against FontCharacters.txt, which the subset script writes alongside the font.
     public static class FontChecks
     {
         public static void Verify()
         {
-            var font = Resources.Load<Font>("NotoSansJP");
-            if (font == null)
+            if (Resources.Load<Font>("NotoSansJP") == null)
                 throw new Exception("UI font missing");
-            foreach (char ch in "鳩市長の街づくりあア漢字✓○¥Aa1")
-                if (!font.HasCharacter(ch))
-                    throw new Exception("UI font lacks " + ch);
-            foreach (char ch in "鰯鱈🕊")
-                if (font.HasCharacter(ch))
-                    throw new Exception("UI font unexpectedly has " + ch + " (subset not applied?)");
-            Debug.Log("PIGEON FONT VERIFICATION PASSED: subset covers game text and Jōyō kanji only");
+            var list = Resources.Load<TextAsset>("FontCharacters");
+            if (list == null)
+                throw new Exception("FontCharacters.txt missing; run Tools/subset_font.py");
+            foreach (char ch in "鳩市長の街づくりあア漢字✓○¥Aa1 ")
+                if (list.text.IndexOf(ch) < 0)
+                    throw new Exception("font subset lacks " + ch);
+            foreach (char ch in "鰯鱈")
+                if (list.text.IndexOf(ch) >= 0)
+                    throw new Exception("font subset unexpectedly has " + ch);
+            Debug.Log("PIGEON FONT VERIFICATION PASSED: subset list covers game text and Jōyō kanji only (" + list.text.Length + " characters)");
         }
     }
 }

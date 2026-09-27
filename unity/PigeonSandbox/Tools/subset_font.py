@@ -1,7 +1,7 @@
 """Build the shipped UI font: Noto Sans JP limited to the game's own text plus kana, ASCII and the Jōyō kanji.
 
 Run after adding UI text. Requires fontTools (`pip install fonttools`).
-Every non-ASCII character in a C# string literal under Assets is included automatically.
+Every non-ASCII character in a C# string literal under Assets (except Editor) is included automatically.
 """
 from pathlib import Path
 import re
@@ -11,6 +11,8 @@ from fontTools.ttLib import TTFont
 project = Path(__file__).resolve().parents[1]
 source = project / 'Tools/FontSource/NotoSansJP-Medium.ttf'
 target = project / 'Assets/Resources/NotoSansJP.ttf'
+# Font.HasCharacter also reports OS fallback glyphs, so the game checks names against this list instead.
+characters = project / 'Assets/Resources/FontCharacters.txt'
 joyo = ''.join(line for line in (project / 'Tools/FontSource/joyo-kanji.txt').read_text(encoding='utf-8').splitlines() if not line.startswith('#'))
 
 ranges = [
@@ -33,6 +35,8 @@ text = {chr(c) for low, high in ranges for c in range(low, high + 1)}
 text.update(joyo)
 literal = re.compile(r'"((?:[^"\\\n]|\\.)*)"')
 for file in (project / 'Assets').rglob('*.cs'):
+    if 'Editor' in file.parts:
+        continue  # Editor-only text never reaches the player (and FontChecks names excluded kanji).
     for match in literal.finditer(file.read_text(encoding='utf-8')):
         text.update(ch for ch in match.group(1) if ord(ch) > 0x7E)
 
@@ -48,6 +52,7 @@ subsetter = subset.Subsetter(options)
 subsetter.populate(unicodes=[ord(ch) for ch in wanted])
 subsetter.subset(font)
 font.save(target)
+characters.write_text(''.join(wanted), encoding='utf-8')
 print('%d characters, %d KB -> %s' % (len(wanted), target.stat().st_size // 1024, target.relative_to(project)))
 if missing:
     print('not in the source font:', ''.join(missing))

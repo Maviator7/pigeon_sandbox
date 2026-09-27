@@ -27,4 +27,6 @@ non-ASCII character used in C# string literals under `Assets`. Regenerate after 
 python3 unity/PigeonSandbox/Tools/subset_font.py
 ```
 
-Bird names are limited to characters the font contains (`Font.HasCharacter`), so they always render.
+The script also writes `Assets/Resources/FontCharacters.txt`, the exact character list of the subset.
+Bird names are limited to it. `Font.HasCharacter` cannot be used: for dynamic fonts it also reports
+glyphs from OS fallback fonts and returns true for almost anything.

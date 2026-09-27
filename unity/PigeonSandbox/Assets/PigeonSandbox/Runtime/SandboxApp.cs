@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 
@@ -203,7 +204,8 @@ namespace PigeonSandbox
             if (!string.IsNullOrEmpty(Input.compositionString))
                 return;
             // The shipped font is a subset (kana, ASCII, Jōyō kanji and game text); refuse names it cannot draw.
-            if (!town.RenameBird(editingBird, nameDraft, ch => font != null && font.HasCharacter(ch)))
+            // Font.HasCharacter cannot tell, as it also counts OS fallback glyphs.
+            if (!town.RenameBird(editingBird, nameDraft, FontCharacters))
             {
                 nameError = "1〜24文字で入力してください。絵文字や一部の漢字、改行は使えません。";
                 return;
@@ -499,6 +501,21 @@ namespace PigeonSandbox
             {
                 Save(false);
                 saveClock = 0;
+            }
+        }
+
+        HashSet<char> fontCharacters;
+        Func<char, bool> FontCharacters
+        {
+            get
+            {
+                if (fontCharacters == null)
+                {
+                    var list = Resources.Load<TextAsset>("FontCharacters");
+                    fontCharacters = list == null ? null : new HashSet<char>(list.text);
+                }
+
+                return fontCharacters == null ? null : (Func<char, bool>)fontCharacters.Contains;
             }
         }
 
