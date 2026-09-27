@@ -43,6 +43,10 @@ namespace PigeonSandbox
                 var gold = Material("Mayor gold", "D4AA50");
                 Shape("Mayor medallion", PrimitiveType.Sphere, Bird, new Vector3(0, 1.12f, .53f), new Vector3(.16f, .18f, .045f), gold);
             }
+
+            // One mesh per animated pivot keeps the part animation while cutting ~40 renderers to 7.
+            foreach (var pivot in new[]{Bird, torso, neck, leftWing, rightWing, leftFoot, rightFoot})
+                MeshBaker.Bake(pivot, false);
         }
 
         private void CreateBird()
