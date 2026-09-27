@@ -68,9 +68,20 @@ grep "PIGEON BENCHMARK" ~/Library/Logs/PigeonSandbox/Pigeon\ Sandbox/Player.log
 
 ### iOS実機での計測
 
-1. **Pigeon Sandbox > Build iOS benchmark (Xcode project)**（バッチは `BuildMac.BuildIOSBenchmark`）で `Builds/iOSBenchmark` にXcodeプロジェクトを作ります。
-2. `Builds/iOSBenchmark/Unity-iPhone.xcodeproj` をXcodeで開き、Signing & Capabilitiesで自分のTeamを選びます。バンドルIDが使えない場合は変更します。環境変数 `PIGEON_APPLE_TEAM`（Team ID）と `PIGEON_IOS_BUNDLE_ID` を設定してからビルドすると、プロジェクトに最初から反映されます。
-3. iPhoneを接続して実行します。約25秒で計測が終わり、画面左下と、Xcodeのコンソールの `PIGEON BENCHMARK` 行に結果が出ます。iOSではフレームレートの上限は画面のリフレッシュレートになります。
+1. XcodeにApple IDを登録し、iPhoneを接続してデベロッパモードを有効にします（初回のみ）。
+2. **Pigeon Sandbox > Build iOS benchmark (Xcode project)**（バッチは `BuildMac.BuildIOSBenchmark`）で `Builds/iOSBenchmark` にXcodeプロジェクトを作ります。環境変数 `PIGEON_APPLE_TEAM`（Team ID）を設定しておくと、そのビルドだけに署名チームを適用します（`ProjectSettings` には保存しません）。バンドルIDは `PIGEON_IOS_BUNDLE_ID` で変えられます。
+3. Unityは既定でiPhoneを60Hzに制限する設定（`CADisableMinimumFrameDurationOnPhone=false`）を書き込みます。ベンチマーク用のビルドだけはこれを外し、余裕がどれだけあるかを測れるようにしています。ゲーム本体は60fpsのままです。
+4. 署名・インストール・実行はコマンドでもできます。初回は、iPhoneの 設定 → 一般 → VPNとデバイス管理 で開発元を信頼します。
+
+```sh
+cd unity/PigeonSandbox/Builds/iOSBenchmark
+xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -configuration Release \
+  -destination "id=<デバイスのUDID>" -derivedDataPath /tmp/pigeon-ios -allowProvisioningUpdates build
+xcrun devicectl device install app --device <UDID> /tmp/pigeon-ios/Build/Products/Release-iphoneos/PigeonSandbox.app
+xcrun devicectl device process launch --device <UDID> --console --terminate-existing com.PigeonSandbox.Pigeon-Sandbox
+```
+
+約25秒で、画面左下とコンソールに `PIGEON BENCHMARK` 行が出ます。`cpuMainMs`・`cpuRenderMs`・`gpuMs` は `FrameTimingManager` による1フレームあたりの処理時間です。画面の更新上限（60Hz）に張り付いているときは、`cpuRenderMs` に更新待ちの時間が含まれます。余裕を判断するときは、上限を外した状態のフレーム時間を見てください。
 
 ### 記録
 
@@ -80,8 +91,12 @@ grep "PIGEON BENCHMARK" ~/Library/Logs/PigeonSandbox/Pigeon\ Sandbox/Player.log
 | 2026-09-27 | 施設の差分更新・共有マテリアル・Coreの確保削減 | Mac（M4 Max） | 116〜118 | 8.5〜8.6 / 17.0 / 22 | 約2,880 | 70 / 151 |
 | 2026-09-27 | 同上、UIなし（`-benchmark-no-ui`） | Mac（M4 Max） | 84〜85 | 11.7〜11.9 / 20〜21 / 29〜31 | 約2,710 | 4.1 / 58 |
 | 2026-09-27 | メッシュの焼き込み・ズーム連動の影 | Mac（M4 Max） | 194〜196 | 5.1〜5.2 / 14.9〜15.0 / 22〜23 | 1,340 | 70 / 151 |
+| 2026-09-27 | 同上 | iPhone 17（A19）、60Hz上限あり | 60.0 | 16.67 / 17.2〜17.7 / 20〜22 | 約970 | 78 / 159 |
+| 2026-09-27 | 同上 | iPhone 17（A19）、120Hz（上限なし） | 119.8〜119.9 | 8.34〜8.35 / 8.7 / 13.5〜16.7 | 約970 | 78 / 173 |
 
 施設・地面・来訪者は1つずつ、鳩は動く部位ごとに、プリミティブを1枚のメッシュへ焼き込みます（`MeshBaker`）。色・つや・金属感は頂点に持たせ、共有シェーダー `PigeonSandbox/Vertex Color Lit` で描きます。最大マップのレンダラー数は約4,000から385になりました。影を描く距離はズームに合わせて変わり（全体表示では従来の70と同じ）、スマートフォンではハードシャドウ・1カスケード・中解像度にします。
+
+iPhone 17では、120Hzでも1フレーム約8.3msに収まり、メインスレッドのCPU時間は約2.8ms、GPUは約5.5msでした。60fpsの予算（16.7ms）に対して約2倍の余裕があります。iPhone 15（A16）では実機で測っていません。CPU・GPUが約1.5倍遅いと仮定すると1フレーム約12.5msで、60fpsに収まる見込みです。施設を3×3マスごとに結合して描画呼び出しを半分（約970→465回）にする案も試しましたが、iPhone 17での結果は変わらず、MacのFPSは下がったため採用していません。
 
 UIなしの計測は、GC確保のうち画面（IMGUI）以外が占める分を切り分けるためのものです。フレーム時間は実行ごとの揺れが大きいため、UIのありなしでは比べません。残りのGC確保（約66KB/フレーム）はIMGUIの画面によるもので、UIの作り直しで解消します。
 

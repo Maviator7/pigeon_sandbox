@@ -107,6 +107,8 @@ namespace PigeonSandbox.Editor
             Set(() => PlayerSettings.fullScreenMode, v => PlayerSettings.fullScreenMode = v, FullScreenMode.Windowed);
             Set(() => PlayerSettings.resizableWindow, v => PlayerSettings.resizableWindow = v, true);
             Set(() => PlayerSettings.runInBackground, v => PlayerSettings.runInBackground = v, false);
+            // FrameTimingManager needs this for the benchmark's CPU/GPU frame times.
+            Set(() => PlayerSettings.enableFrameTimingStats, v => PlayerSettings.enableFrameTimingStats = v, true);
             var scenes = new[]{ParkScene, BenchmarkScene}.Where(File.Exists).ToArray();
             if (!EditorBuildSettings.scenes.Select(s => s.path).SequenceEqual(scenes))
                 EditorBuildSettings.scenes = scenes.Select(s => new EditorBuildSettingsScene(s, s == ParkScene)).ToArray();
@@ -124,9 +126,6 @@ namespace PigeonSandbox.Editor
             Set(() => PlayerSettings.allowedAutorotateToLandscapeLeft, v => PlayerSettings.allowedAutorotateToLandscapeLeft = v, true);
             Set(() => PlayerSettings.allowedAutorotateToLandscapeRight, v => PlayerSettings.allowedAutorotateToLandscapeRight = v, true);
             Set(() => PlayerSettings.iOS.appleEnableAutomaticSigning, v => PlayerSettings.iOS.appleEnableAutomaticSigning = v, true);
-            string team = Environment.GetEnvironmentVariable("PIGEON_APPLE_TEAM");
-            if (!string.IsNullOrEmpty(team))
-                Set(() => PlayerSettings.iOS.appleDeveloperTeamID, v => PlayerSettings.iOS.appleDeveloperTeamID = v, team);
             // Runtime-created materials need their shaders in the player. Keep exactly one entry for each.
             var settings = new SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/GraphicsSettings.asset")[0]);
             var shaders = settings.FindProperty("m_AlwaysIncludedShaders");
@@ -190,7 +189,28 @@ namespace PigeonSandbox.Editor
             Verify();
             EnsureScene(BenchmarkScene, true);
             ConfigurePlayer();
-            BuildPlayer(new[]{BenchmarkScene}, "Builds/iOSBenchmark", BuildOptions.Development, BuildTarget.iOS);
+            // The signing team is personal: apply PIGEON_APPLE_TEAM for this build only and never save it to ProjectSettings.
+            string previousTeam = PlayerSettings.iOS.appleDeveloperTeamID;
+            string team = Environment.GetEnvironmentVariable("PIGEON_APPLE_TEAM");
+            try
+            {
+                if (!string.IsNullOrEmpty(team))
+                    PlayerSettings.iOS.appleDeveloperTeamID = team;
+                BuildPlayer(new[]{BenchmarkScene}, "Builds/iOSBenchmark", BuildOptions.Development, BuildTarget.iOS);
+                // Unity writes CADisableMinimumFrameDurationOnPhone=false, capping ProMotion iPhones at 60Hz.
+                // The benchmark lifts it so results show headroom; the game itself stays at 60fps.
+                var plistBuddy = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("/usr/libexec/PlistBuddy", "-c \"Set :CADisableMinimumFrameDurationOnPhone true\" Builds/iOSBenchmark/Info.plist")
+                {UseShellExecute = false});
+                plistBuddy.WaitForExit();
+                Assert(plistBuddy.ExitCode == 0, "Could not lift the 60Hz cap in Info.plist");
+            }
+            finally
+            {
+                PlayerSettings.iOS.appleDeveloperTeamID = previousTeam;
+                // The build saves ProjectSettings with the temporary team; write the original back.
+                AssetDatabase.SaveAssets();
+            }
+
             Debug.Log("PIGEON IOS BENCHMARK PROJECT PASSED");
         }
 
