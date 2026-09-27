@@ -121,6 +121,8 @@ namespace PigeonSandbox
     [Serializable]
     public class TownSave
     {
+        // 0 = saved before versioning. Bump CurrentSaveVersion when the format changes and migrate in Restore.
+        public int SaveVersion;
         public List<Facility> Facilities = new List<Facility>();
         public List<TownBird> Birds = new List<TownBird>();
         public List<BirdFriendship> Friendships = new List<BirdFriendship>();
@@ -268,7 +270,7 @@ namespace PigeonSandbox
 
         public TownSave Capture()
         {
-            var save = new TownSave{Wishes = CopyWishes(Wishes), Friendships = CopyFriendships(friendships), Money = Money, Time = Time, Purchases = Purchases, ExpansionLevel = ExpansionLevel, NestBoxes = NestBoxes, BathPriority = BathPriority, CafeSupport = CafeSupport, CompletedRequests = new bool[Requests.Count], NextFestivalDay = NextFestivalDay, SelectedFestival = SelectedFestival, Festival = CopyFestival(), Postcards = CopyPostcards(Postcards)};
+            var save = new TownSave{SaveVersion = CurrentSaveVersion, Wishes = CopyWishes(Wishes), Friendships = CopyFriendships(friendships), Money = Money, Time = Time, Purchases = Purchases, ExpansionLevel = ExpansionLevel, NestBoxes = NestBoxes, BathPriority = BathPriority, CafeSupport = CafeSupport, CompletedRequests = new bool[Requests.Count], NextFestivalDay = NextFestivalDay, SelectedFestival = SelectedFestival, Festival = CopyFestival(), Postcards = CopyPostcards(Postcards)};
             foreach (var f in Facilities)
                 save.Facilities.Add(new Facility{Id = f.Id, Kind = f.Kind, X = f.X, Z = f.Z, Level = f.Level});
             foreach (var b in Birds)
@@ -280,7 +282,7 @@ namespace PigeonSandbox
 
         public bool Restore(TownSave save)
         {
-            if (save == null || save.Facilities == null || save.Birds == null || save.Birds.Count == 0 || save.Birds.Count > 15 || float.IsNaN(save.Money) || float.IsInfinity(save.Money) || float.IsNaN(save.Time) || float.IsInfinity(save.Time))
+            if (save == null || save.SaveVersion > CurrentSaveVersion || save.Facilities == null || save.Birds == null || save.Birds.Count == 0 || save.Birds.Count > 15 || float.IsNaN(save.Money) || float.IsInfinity(save.Money) || float.IsNaN(save.Time) || float.IsInfinity(save.Time))
                 return false;
             if (save.ExpansionLevel < 0 || save.ExpansionLevel > 4)
                 return false;
@@ -359,6 +361,7 @@ namespace PigeonSandbox
             return new[]{"パン屋", "噴水", "集合住宅", "街路樹", "広場", "時計台", "オープンカフェ", "花壇の公園"}[(int)k];
         }
 
+        public const int CurrentSaveVersion = 1;
         public static string ActivityName(BirdActivity activity) => new[]{"散歩", "休憩", "水浴び", "食事", "羽繕い", "日向ぼっこ", "眺める", "テラスで休憩", "人と交流", "仲間と散歩", "再会のクルクル", "ごきげんクルクル", "ありがとうのクルクル"}[(int)activity];
         public static string PersonalityName(Personality p)
         {

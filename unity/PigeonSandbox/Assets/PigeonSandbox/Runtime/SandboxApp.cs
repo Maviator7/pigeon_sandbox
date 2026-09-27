@@ -507,7 +507,7 @@ namespace PigeonSandbox
                 return;
             try
             {
-                File.WriteAllText(SavePath, JsonUtility.ToJson(town.Capture(), true));
+                new TownSaveStore(SavePath).Write(JsonUtility.ToJson(town.Capture(), true));
                 if (notify)
                     message = "街を保存しました。次回もここから再開します。";
             }
@@ -517,19 +517,40 @@ namespace PigeonSandbox
             }
         }
 
+        // Unreadable or newer-version saves are set aside by TownSaveStore, never overwritten by the next autosave.
         void Load()
         {
-            if (!File.Exists(SavePath))
-                return;
-            try
+            int rejected = 0;
+            string json = new TownSaveStore(SavePath).Read(text =>
             {
-                if (town.Restore(JsonUtility.FromJson<TownSave>(File.ReadAllText(SavePath))))
-                    message = "おかえりなさい、市長。保存した街を開きました。";
+                try
+                {
+                    if (new TownSimulation().Restore(JsonUtility.FromJson<TownSave>(text)))
+                        return true;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning(e.Message);
+                }
+
+                rejected++;
+                return false;
             }
-            catch (Exception e)
+
+            );
+            if (json != null && town.Restore(JsonUtility.FromJson<TownSave>(json)))
+                message = rejected > 0 ? "最新の保存を読み込めなかったため、ひとつ前の保存から再開しました。" : "おかえりなさい、市長。保存した街を開きました。";
+            else if (rejected > 0)
+                message = "保存を読み込めなかったため、新しい広場から開始します。元のファイルは残してあります。";
+        }
+
+        // iOS rarely calls OnApplicationQuit; backgrounding is the reliable moment to save.
+        void OnApplicationPause(bool pausing)
+        {
+            if (pausing && town != null)
             {
-                message = "保存を読み込めなかったため、新しい広場から開始します。";
-                Debug.LogWarning(e.Message);
+                CancelRename();
+                Save(false);
             }
         }
 

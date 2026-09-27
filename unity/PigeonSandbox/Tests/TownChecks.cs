@@ -386,5 +386,6 @@ public static class TownChecks
         FestivalChecks.RunAll();
         BenchmarkChecks.RunAll();
         ActivityChecks.RunAll();
+        SaveStoreChecks.RunAll();
     }
 }
