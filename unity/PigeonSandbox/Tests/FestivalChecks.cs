@@ -18,7 +18,7 @@ public static class FestivalChecks
         bird.TargetId = place.Id;
         bird.Decision = 100;
         bird.Wait = 0;
-        bird.Action = "散歩";
+        bird.Activity = BirdActivity.Stroll;
         town.Tick(.01f);
     }
 

@@ -77,9 +77,28 @@ namespace PigeonSandbox
         public SocialActivity Social;
         internal float SocialTime, SocialCooldown;
         internal int SocialPlaceId = -1, SocialPlaceX, SocialPlaceZ;
-        public string Action = "散歩";
+        // Behaviour state; compare this, never the display text.
+        public BirdActivity Activity = BirdActivity.Stroll;
+        public string Action => TownSimulation.ActivityName(Activity);
         public int TargetId = -1;
         internal float Wait, Decision;
+    }
+
+    public enum BirdActivity
+    {
+        Stroll,
+        Rest,
+        Bathe,
+        Eat,
+        Preen,
+        Sunbathe,
+        Watch,
+        TerraceRest,
+        MeetPeople,
+        WalkTogether,
+        ReunionSpin,
+        HappySpin,
+        ThanksSpin
     }
 
     public class Visitor
@@ -102,6 +121,8 @@ namespace PigeonSandbox
     [Serializable]
     public class TownSave
     {
+        // 0 = saved before versioning. Bump CurrentSaveVersion when the format changes and migrate in Restore.
+        public int SaveVersion;
         public List<Facility> Facilities = new List<Facility>();
         public List<TownBird> Birds = new List<TownBird>();
         public List<BirdFriendship> Friendships = new List<BirdFriendship>();
@@ -230,7 +251,8 @@ namespace PigeonSandbox
         }
 
         public const int MaxBirdNameLength = 24;
-        public bool RenameBird(int id, string name)
+        // displayable: glyph check for the UI font. Characters it lacks (emoji, kanji outside the subset) are refused.
+        public bool RenameBird(int id, string name, Func<char, bool> displayable = null)
         {
             if (string.IsNullOrWhiteSpace(name))
                 return false;
@@ -238,7 +260,7 @@ namespace PigeonSandbox
             if (new System.Globalization.StringInfo(name).LengthInTextElements > MaxBirdNameLength)
                 return false;
             foreach (char ch in name)
-                if (char.IsControl(ch) || ch == '\u2028' || ch == '\u2029')
+                if (char.IsControl(ch) || ch == '\u2028' || ch == '\u2029' || displayable != null && (char.IsSurrogate(ch) || !displayable(ch)))
                     return false;
             var bird = Birds.Find(b => b.Id == id);
             if (bird == null)
@@ -249,11 +271,11 @@ namespace PigeonSandbox
 
         public TownSave Capture()
         {
-            var save = new TownSave{Wishes = CopyWishes(Wishes), Friendships = CopyFriendships(friendships), Money = Money, Time = Time, Purchases = Purchases, ExpansionLevel = ExpansionLevel, NestBoxes = NestBoxes, BathPriority = BathPriority, CafeSupport = CafeSupport, CompletedRequests = new bool[Requests.Count], NextFestivalDay = NextFestivalDay, SelectedFestival = SelectedFestival, Festival = CopyFestival(), Postcards = CopyPostcards(Postcards)};
+            var save = new TownSave{SaveVersion = CurrentSaveVersion, Wishes = CopyWishes(Wishes), Friendships = CopyFriendships(friendships), Money = Money, Time = Time, Purchases = Purchases, ExpansionLevel = ExpansionLevel, NestBoxes = NestBoxes, BathPriority = BathPriority, CafeSupport = CafeSupport, CompletedRequests = new bool[Requests.Count], NextFestivalDay = NextFestivalDay, SelectedFestival = SelectedFestival, Festival = CopyFestival(), Postcards = CopyPostcards(Postcards)};
             foreach (var f in Facilities)
                 save.Facilities.Add(new Facility{Id = f.Id, Kind = f.Kind, X = f.X, Z = f.Z, Level = f.Level});
             foreach (var b in Birds)
-                save.Birds.Add(new TownBird{Id = b.Id, Name = b.Name, Personality = b.Personality, Plumage = FeatherOf(b), Rare = b.Rare, Mayor = b.Mayor, X = b.X, Y = b.Y, Z = b.Z, Heading = b.Heading, Action = b.Action, TargetId = b.TargetId});
+                save.Birds.Add(new TownBird{Id = b.Id, Name = b.Name, Personality = b.Personality, Plumage = FeatherOf(b), Rare = b.Rare, Mayor = b.Mayor, X = b.X, Y = b.Y, Z = b.Z, Heading = b.Heading, Activity = b.Activity, TargetId = b.TargetId});
             for (int i = 0; i < Requests.Count; i++)
                 save.CompletedRequests[i] = Requests[i].Complete;
             return save;
@@ -261,7 +283,7 @@ namespace PigeonSandbox
 
         public bool Restore(TownSave save)
         {
-            if (save == null || save.Facilities == null || save.Birds == null || save.Birds.Count == 0 || save.Birds.Count > 15 || float.IsNaN(save.Money) || float.IsInfinity(save.Money) || float.IsNaN(save.Time) || float.IsInfinity(save.Time))
+            if (save == null || save.SaveVersion > CurrentSaveVersion || save.Facilities == null || save.Birds == null || save.Birds.Count == 0 || save.Birds.Count > 15 || float.IsNaN(save.Money) || float.IsInfinity(save.Money) || float.IsNaN(save.Time) || float.IsInfinity(save.Time))
                 return false;
             if (save.ExpansionLevel < 0 || save.ExpansionLevel > 4)
                 return false;
@@ -302,7 +324,7 @@ namespace PigeonSandbox
 
             foreach (var b in save.Birds)
             {
-                Birds.Add(new TownBird{Id = b.Id, Name = b.Name, Personality = b.Personality, Plumage = FeatherOf(b), Rare = b.Rare, Mayor = b.Mayor, X = FinitePosition(b.X), Z = FinitePosition(b.Z), Action = "散歩", TargetId = -1});
+                Birds.Add(new TownBird{Id = b.Id, Name = b.Name, Personality = b.Personality, Plumage = FeatherOf(b), Rare = b.Rare, Mayor = b.Mayor, X = FinitePosition(b.X), Z = FinitePosition(b.Z), Activity = BirdActivity.Stroll, TargetId = -1});
                 nextId = Math.Max(nextId, b.Id + 1);
             }
 
@@ -340,6 +362,8 @@ namespace PigeonSandbox
             return new[]{"パン屋", "噴水", "集合住宅", "街路樹", "広場", "時計台", "オープンカフェ", "花壇の公園"}[(int)k];
         }
 
+        public const int CurrentSaveVersion = 1;
+        public static string ActivityName(BirdActivity activity) => new[]{"散歩", "休憩", "水浴び", "食事", "羽繕い", "日向ぼっこ", "眺める", "テラスで休憩", "人と交流", "仲間と散歩", "再会のクルクル", "ごきげんクルクル", "ありがとうのクルクル"}[(int)activity];
         public static string PersonalityName(Personality p)
         {
             return new[]{"食いしん坊", "水浴び好き", "目立ちたがり", "臆病"}[(int)p];
@@ -482,7 +506,7 @@ namespace PigeonSandbox
                 if (b.TargetId == id)
                 {
                     b.Wait = 0;
-                    b.Action = "散歩";
+                    b.Activity = BirdActivity.Stroll;
                 }
 
             Changed("配置を変更しました。移設費は無料です。");
@@ -767,7 +791,7 @@ namespace PigeonSandbox
                     if (b.CheerRemaining == 0)
                     {
                         b.CheerTurn = 0;
-                        b.Action = "休憩";
+                        b.Activity = BirdActivity.Rest;
                         b.Wait = .6f;
                     }
 
@@ -781,17 +805,17 @@ namespace PigeonSandbox
                     b.WishThanksPending = false;
                     b.CheerRemaining = 1.4f;
                     b.CheerTurn = 0;
-                    b.Action = "ありがとうのクルクル";
+                    b.Activity = BirdActivity.ThanksSpin;
                     continue;
                 }
 
                 var target = Find(b.TargetId);
                 // A little celebration after a pleasant meal or bath, never during travel or flight.
-                if (target != null && b.Wait <= 0 && b.Y < .15f && PigeonHappiness >= 65 && (b.Action == "食事" || b.Action == "水浴び") && random.NextDouble() < .35)
+                if (target != null && b.Wait <= 0 && b.Y < .15f && PigeonHappiness >= 65 && (b.Activity == BirdActivity.Eat || b.Activity == BirdActivity.Bathe) && random.NextDouble() < .35)
                 {
                     b.CheerRemaining = 1.4f;
                     b.CheerTurn = 0;
-                    b.Action = "ごきげんクルクル";
+                    b.Activity = BirdActivity.HappySpin;
                     continue;
                 }
 
@@ -807,7 +831,7 @@ namespace PigeonSandbox
                 {
                     b.Perched = false;
                     b.Y *= Math.Max(0, 1 - dt * 4);
-                    b.Action = "散歩";
+                    b.Activity = BirdActivity.Stroll;
                     continue;
                 }
 
@@ -816,7 +840,7 @@ namespace PigeonSandbox
                 if (b.Wait > 0)
                 {
                     if (target.Kind == FacilityKind.Cafe)
-                        b.Action = VisitorNear(b, 2.2f) ? "人と交流" : "テラスで休憩";
+                        b.Activity = VisitorNear(b, 2.2f) ? BirdActivity.MeetPeople : BirdActivity.TerraceRest;
                     float px, py, pz;
                     if (Perch(target, b.Id, out px, out py, out pz))
                     {
@@ -841,10 +865,10 @@ namespace PigeonSandbox
                 // Birds still in the air glide over buildings; obstacle avoidance applies on the ground.
                 bool airborne = b.Y > .15f;
                 b.Y *= Math.Max(0, 1 - dt * 4);
-                b.Action = "散歩";
+                b.Activity = BirdActivity.Stroll;
                 if (Walk(ref b.X, ref b.Z, ref b.Heading, tx, tz, .7f + (b.Mayor ? .12f : 0), dt, !airborne))
                 {
-                    b.Action = target.Kind == FacilityKind.Fountain ? "水浴び" : target.Kind == FacilityKind.Bakery ? "食事" : target.Kind == FacilityKind.ClockTower ? "眺める" : target.Kind == FacilityKind.Cafe ? (VisitorNear(b, 2.2f) ? "人と交流" : "テラスで休憩") : target.Kind == FacilityKind.Park ? (TimeOfDay == TownTimeOfDay.Evening ? "休憩" : b.Id % 2 == 0 ? "羽繕い" : "日向ぼっこ") : "休憩";
+                    b.Activity = target.Kind == FacilityKind.Fountain ? BirdActivity.Bathe : target.Kind == FacilityKind.Bakery ? BirdActivity.Eat : target.Kind == FacilityKind.ClockTower ? BirdActivity.Watch : target.Kind == FacilityKind.Cafe ? (VisitorNear(b, 2.2f) ? BirdActivity.MeetPeople : BirdActivity.TerraceRest) : target.Kind == FacilityKind.Park ? (TimeOfDay == TownTimeOfDay.Evening ? BirdActivity.Rest : b.Id % 2 == 0 ? BirdActivity.Preen : BirdActivity.Sunbathe) : BirdActivity.Rest;
                     b.Wait = (target.Kind == FacilityKind.Park ? 5 : 2.5f) + (float)random.NextDouble() * 3;
                 }
             }

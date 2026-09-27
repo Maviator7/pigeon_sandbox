@@ -202,9 +202,10 @@ namespace PigeonSandbox
         {
             if (!string.IsNullOrEmpty(Input.compositionString))
                 return;
-            if (!town.RenameBird(editingBird, nameDraft))
+            // The shipped font is a subset (kana, ASCII, Jōyō kanji and game text); refuse names it cannot draw.
+            if (!town.RenameBird(editingBird, nameDraft, ch => font != null && font.HasCharacter(ch)))
             {
-                nameError = "1〜24文字で入力してください。改行は使えません。";
+                nameError = "1〜24文字で入力してください。絵文字や一部の漢字、改行は使えません。";
                 return;
             }
 
@@ -231,7 +232,7 @@ namespace PigeonSandbox
             }
 
             y += 50;
-            y = FlowLabel(0, y, width, "名前は1〜24文字 · 同じ名前もOK", small, draw);
+            y = FlowLabel(0, y, width, "名前は1〜24文字（かな・常用漢字・英数字など） · 同じ名前もOK", small, draw);
             float half = (width - 8) / 2;
             if (draw && Button(new Rect(0, y, half, 40), "保存", true))
                 ConfirmRename();
@@ -507,7 +508,7 @@ namespace PigeonSandbox
                 return;
             try
             {
-                File.WriteAllText(SavePath, JsonUtility.ToJson(town.Capture(), true));
+                new TownSaveStore(SavePath).Write(JsonUtility.ToJson(town.Capture(), true));
                 if (notify)
                     message = "街を保存しました。次回もここから再開します。";
             }
@@ -517,19 +518,40 @@ namespace PigeonSandbox
             }
         }
 
+        // Unreadable or newer-version saves are set aside by TownSaveStore, never overwritten by the next autosave.
         void Load()
         {
-            if (!File.Exists(SavePath))
-                return;
-            try
+            int rejected = 0;
+            string json = new TownSaveStore(SavePath).Read(text =>
             {
-                if (town.Restore(JsonUtility.FromJson<TownSave>(File.ReadAllText(SavePath))))
-                    message = "おかえりなさい、市長。保存した街を開きました。";
+                try
+                {
+                    if (new TownSimulation().Restore(JsonUtility.FromJson<TownSave>(text)))
+                        return true;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning(e.Message);
+                }
+
+                rejected++;
+                return false;
             }
-            catch (Exception e)
+
+            );
+            if (json != null && town.Restore(JsonUtility.FromJson<TownSave>(json)))
+                message = rejected > 0 ? "最新の保存を読み込めなかったため、ひとつ前の保存から再開しました。" : "おかえりなさい、市長。保存した街を開きました。";
+            else if (rejected > 0)
+                message = "保存を読み込めなかったため、新しい広場から開始します。元のファイルは残してあります。";
+        }
+
+        // iOS rarely calls OnApplicationQuit; backgrounding is the reliable moment to save.
+        void OnApplicationPause(bool pausing)
+        {
+            if (pausing && town != null)
             {
-                message = "保存を読み込めなかったため、新しい広場から開始します。";
-                Debug.LogWarning(e.Message);
+                CancelRename();
+                Save(false);
             }
         }
 

@@ -86,6 +86,12 @@ public static class TownChecks
         Check(!named.RenameBird(-1, "ぽっぽ"), "unknown bird rename rejected");
         Check(named.RenameBird(birdId, "  もち 🕊  ") && named.Birds[0].Name == "もち 🕊", "Japanese and emoji rename trims whitespace");
         Check(named.RenameBird(named.Birds[1].Id, "もち 🕊"), "duplicate names allowed for distinct birds");
+        // With a glyph check (the shipped font), names must be displayable: no emoji or kanji outside the font.
+        Func<char, bool> font = ch => ch < 0x80 || "もちまめ".IndexOf(ch) >= 0;
+        var fontTown = new TownSimulation(4);
+        int fontBird = fontTown.Birds[0].Id;
+        Check(fontTown.RenameBird(fontBird, "まめ 2", font) && fontTown.Birds[0].Name == "まめ 2", "displayable name accepted with glyph check");
+        Check(!fontTown.RenameBird(fontBird, "まめ🕊", font) && !fontTown.RenameBird(fontBird, "鰯", font) && fontTown.Birds[0].Name == "まめ 2", "undisplayable characters rejected without changing the name");
         var namedRestore = new TownSimulation();
         Check(namedRestore.Restore(named.Capture()) && namedRestore.Birds[0].Id == birdId && namedRestore.Birds[0].Name == "もち 🕊", "renamed bird survives save and restore");
         var cheerful = new TownSimulation(42);
@@ -97,10 +103,10 @@ public static class TownChecks
             dancer.TargetId = cheerful.At(1, 0).Id;
             dancer.Decision = 100;
             dancer.Wait = 0;
-            dancer.Action = "食事";
+            dancer.Activity = BirdActivity.Eat;
             cheerful.PigeonHappiness = 100;
             cheerful.Tick(.01f);
-            danced = dancer.Action == "ごきげんクルクル";
+            danced = dancer.Activity == BirdActivity.HappySpin;
         }
 
         Check(danced, "happy pigeon sometimes dances after eating");
@@ -117,7 +123,7 @@ public static class TownChecks
         Check(dancer.X == danceX && dancer.Z == danceZ, "dance stays in place");
         for (int i = 0; i < 5; i++)
             cheerful.Tick(.1f);
-        Check(dancer.CheerTurn == 0 && dancer.Action != "ごきげんクルクル", "dance finishes and returns to normal behavior");
+        Check(dancer.CheerTurn == 0 && dancer.Activity != BirdActivity.HappySpin, "dance finishes and returns to normal behavior");
         var quiet = new TownSimulation(42);
         quiet.Build(FacilityKind.Fountain, 1, 0);
         var quietBird = quiet.Birds[0];
@@ -126,10 +132,10 @@ public static class TownChecks
             quietBird.TargetId = quiet.At(1, 0).Id;
             quietBird.Decision = 100;
             quietBird.Wait = 0;
-            quietBird.Action = "水浴び";
+            quietBird.Activity = BirdActivity.Bathe;
             quiet.PigeonHappiness = 0;
             quiet.Tick(.01f);
-            Check(quietBird.Action != "ごきげんクルクル", "low happiness does not trigger cheerful dance");
+            Check(quietBird.Activity != BirdActivity.HappySpin, "low happiness does not trigger cheerful dance");
         }
 
         var land = new TownSimulation(12);
@@ -192,7 +198,7 @@ public static class TownChecks
             pb.Decision = 100;
             pb.Wait = 0;
             parkBirds.Tick(.01f);
-            Check(pb.Action == (pb.Id % 2 == 0 ? "羽繕い" : "日向ぼっこ"), "park arrival gives individual resting behavior");
+            Check(pb.Activity == (pb.Id % 2 == 0 ? BirdActivity.Preen : BirdActivity.Sunbathe), "park arrival gives individual resting behavior");
         }
 
         var interaction = new TownSimulation(8);
@@ -206,13 +212,13 @@ public static class TownChecks
         cb.Decision = 100;
         cb.Wait = 0;
         interaction.Tick(.01f);
-        Check(cb.Action == "テラスで休憩", "cafe bird rests when no person is nearby");
+        Check(cb.Activity == BirdActivity.TerraceRest, "cafe bird rests when no person is nearby");
         interaction.Visitors.Add(new Visitor{Id = 999, X = cb.X, Z = cb.Z, Wait = 5});
         interaction.Tick(.01f);
-        Check(cb.Action == "人と交流", "cafe bird interacts with nearby visitor");
+        Check(cb.Activity == BirdActivity.MeetPeople, "cafe bird interacts with nearby visitor");
         interaction.Visitors.Clear();
         interaction.Tick(.01f);
-        Check(cb.Action == "テラスで休憩", "interaction ends when visitor leaves");
+        Check(cb.Activity == BirdActivity.TerraceRest, "interaction ends when visitor leaves");
         var recovery = new TownSimulation();
         recovery.Money = 0;
         Run(recovery, 50);
@@ -385,5 +391,7 @@ public static class TownChecks
         PerchChecks();
         FestivalChecks.RunAll();
         BenchmarkChecks.RunAll();
+        ActivityChecks.RunAll();
+        SaveStoreChecks.RunAll();
     }
 }
