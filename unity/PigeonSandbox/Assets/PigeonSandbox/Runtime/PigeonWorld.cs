@@ -115,7 +115,7 @@ namespace PigeonSandbox
             }
         }
 
-        public void Animate(float time, float speed, bool flying, bool eating, string activity = null)
+        public void Animate(float time, float speed, bool flying, bool eating, BirdActivity activity = BirdActivity.Stroll)
         {
             if (!initialized)
                 return;
@@ -132,12 +132,12 @@ namespace PigeonSandbox
             rightFoot.localRotation = Quaternion.Euler(flying ? -65 : -step * 24 * walk, 0, 0);
             leftFoot.localPosition = new Vector3(-.20f, .06f + Mathf.Max(0, step) * .085f * walk, .10f + step * .07f * walk);
             rightFoot.localPosition = new Vector3(.20f, .06f + Mathf.Max(0, -step) * .085f * walk, .10f - step * .07f * walk);
-            if (!flying && activity == "羽繕い")
+            if (!flying && activity == BirdActivity.Preen)
             {
                 neck.localRotation = Quaternion.Euler(24 + Mathf.Sin(time * 4) * 9, 62 + Mathf.Sin(time * 1.7f) * 12, 0);
                 rightWing.localRotation = Quaternion.Euler(0, 0, 12 + Mathf.Sin(time * 2) * 4);
             }
-            else if (!flying && activity == "日向ぼっこ")
+            else if (!flying && activity == BirdActivity.Sunbathe)
             {
                 torso.localPosition += new Vector3(0, -.045f, 0);
                 torso.localRotation = Quaternion.Euler(0, 0, -7);

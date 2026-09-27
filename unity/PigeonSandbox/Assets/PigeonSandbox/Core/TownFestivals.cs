@@ -140,7 +140,7 @@ namespace PigeonSandbox
                 bool atMain = FestivalVenueReadyAt(target, festival.Kind);
                 if (atMain && (festival.Kind != FestivalKind.ClockEvening || TimeOfDay == TownTimeOfDay.Evening) && MainAction(bird, festival.Kind) && !festival.MainBirdIds.Contains(bird.Id))
                     festival.MainBirdIds.Add(bird.Id);
-                if (festival.Kind == FestivalKind.WatersideDay && target.Kind == FacilityKind.Park && NearKind(target, FacilityKind.Fountain) && (bird.Action == "羽繕い" || bird.Action == "日向ぼっこ" || bird.Action == "休憩") && !festival.PartnerBirdIds.Contains(bird.Id))
+                if (festival.Kind == FestivalKind.WatersideDay && target.Kind == FacilityKind.Park && NearKind(target, FacilityKind.Fountain) && (bird.Activity == BirdActivity.Preen || bird.Activity == BirdActivity.Sunbathe || bird.Activity == BirdActivity.Rest) && !festival.PartnerBirdIds.Contains(bird.Id))
                     festival.PartnerBirdIds.Add(bird.Id);
             }
 
@@ -160,7 +160,7 @@ namespace PigeonSandbox
 
         static bool MainAction(TownBird bird, FestivalKind kind)
         {
-            return kind == FestivalKind.BakeryMarket ? bird.Action == "食事" : kind == FestivalKind.WatersideDay ? bird.Action == "水浴び" : bird.Action == "眺める";
+            return kind == FestivalKind.BakeryMarket ? bird.Activity == BirdActivity.Eat : kind == FestivalKind.WatersideDay ? bird.Activity == BirdActivity.Bathe : bird.Activity == BirdActivity.Watch;
         }
 
         void FinishFestival()

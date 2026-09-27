@@ -90,9 +90,9 @@ namespace PigeonSandbox
                         visiting = bird.Social == SocialActivity.Resting && friend != null && friend.CompanionId == bird.Id && friend.TargetId == place.Id && FriendshipTime(bird.Id, friend.Id) >= FriendThreshold;
                     }
                     else if (wish.Kind == BirdWishKind.HomeBath)
-                        visiting = bird.Action == "水浴び";
+                        visiting = bird.Activity == BirdActivity.Bathe;
                     else
-                        visiting = bird.Action == "休憩" || bird.Action == "日向ぼっこ" || bird.Action == "羽繕い";
+                        visiting = bird.Activity == BirdActivity.Rest || bird.Activity == BirdActivity.Sunbathe || bird.Activity == BirdActivity.Preen;
                 }
 
                 wish.VisitTime = visiting ? wish.VisitTime + dt : 0;

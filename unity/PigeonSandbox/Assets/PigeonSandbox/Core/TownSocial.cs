@@ -107,7 +107,7 @@ namespace PigeonSandbox
 
         bool AvailableForCompany(TownBird bird)
         {
-            return bird.Social == SocialActivity.None && bird.SocialCooldown <= 0 && bird.Y < .15f && bird.CheerRemaining <= 0 && (bird.Action == "散歩" || bird.Action == "休憩" || bird.Action == "日向ぼっこ" || bird.Action == "羽繕い");
+            return bird.Social == SocialActivity.None && bird.SocialCooldown <= 0 && bird.Y < .15f && bird.CheerRemaining <= 0 && (bird.Activity == BirdActivity.Stroll || bird.Activity == BirdActivity.Rest || bird.Activity == BirdActivity.Sunbathe || bird.Activity == BirdActivity.Preen);
         }
 
         static bool SocialPlace(Facility place) => place.Kind == FacilityKind.Park || place.Kind == FacilityKind.Plaza || place.Kind == FacilityKind.Fountain;
@@ -141,7 +141,7 @@ namespace PigeonSandbox
             bird.TargetId = place.Id;
             bird.Wait = 0;
             bird.CheerTurn = 0;
-            bird.Action = greet ? "再会のクルクル" : "仲間と散歩";
+            bird.Activity = greet ? BirdActivity.ReunionSpin : BirdActivity.WalkTogether;
         }
 
         static void EndCompany(TownBird bird)
@@ -153,7 +153,7 @@ namespace PigeonSandbox
             bird.SocialCooldown = 20 + bird.Id % 7;
             bird.CheerTurn = 0;
             bird.Y = 0;
-            bird.Action = "休憩";
+            bird.Activity = BirdActivity.Rest;
             bird.Wait = 1;
             bird.Decision = 0;
         }
@@ -193,7 +193,7 @@ namespace PigeonSandbox
                         first.Social = second.Social = SocialActivity.Walking;
                         first.SocialTime = second.SocialTime = 12;
                         first.CheerTurn = second.CheerTurn = 0;
-                        first.Action = second.Action = "仲間と散歩";
+                        first.Activity = second.Activity = BirdActivity.WalkTogether;
                     }
 
                     continue;
@@ -240,8 +240,8 @@ namespace PigeonSandbox
                     first.Social = second.Social = place.Kind == FacilityKind.Fountain ? SocialActivity.Bathing : SocialActivity.Resting;
                     first.SocialTime = second.SocialTime = 7;
                     first.Heading = second.Heading = place.Kind == FacilityKind.Park ? (float)(Math.Atan2(Math.Cos(angle), Math.Sin(angle)) * 180 / Math.PI) : 180;
-                    first.Action = place.Kind == FacilityKind.Fountain ? "水浴び" : place.Kind == FacilityKind.Park ? (first.Id % 2 == 0 ? "羽繕い" : "日向ぼっこ") : "休憩";
-                    second.Action = place.Kind == FacilityKind.Fountain ? "水浴び" : place.Kind == FacilityKind.Park ? (second.Id % 2 == 0 ? "羽繕い" : "日向ぼっこ") : "休憩";
+                    first.Activity = place.Kind == FacilityKind.Fountain ? BirdActivity.Bathe : place.Kind == FacilityKind.Park ? (first.Id % 2 == 0 ? BirdActivity.Preen : BirdActivity.Sunbathe) : BirdActivity.Rest;
+                    second.Activity = place.Kind == FacilityKind.Fountain ? BirdActivity.Bathe : place.Kind == FacilityKind.Park ? (second.Id % 2 == 0 ? BirdActivity.Preen : BirdActivity.Sunbathe) : BirdActivity.Rest;
                 }
             }
 

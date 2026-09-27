@@ -262,7 +262,7 @@ namespace PigeonSandbox
                 float speed = previous.TryGetValue(b.Id, out var old) ? Vector3.Distance(old, pos) / Mathf.Max(.001f, UnityEngine.Time.deltaTime) : 0;
                 model.transform.position = pos;
                 model.transform.rotation = Quaternion.Euler(0, b.Heading + b.CheerTurn, 0);
-                model.Animate(town.Time + b.Id * .43f, paused ? 0 : speed, b.Y > .15f && !b.Perched && b.Social == SocialActivity.None, b.Action == "食事" || b.Action == "水浴び", b.Action);
+                model.Animate(town.Time + b.Id * .43f, paused ? 0 : speed, b.Y > .15f && !b.Perched && b.Social == SocialActivity.None, b.Activity == BirdActivity.Eat || b.Activity == BirdActivity.Bathe, b.Activity);
                 previous[b.Id] = pos;
             }
 

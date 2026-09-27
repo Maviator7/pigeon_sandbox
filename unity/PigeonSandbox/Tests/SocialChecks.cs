@@ -48,7 +48,7 @@ public static class SocialChecks
         a.Y = b.Y = 0;
         a.SocialCooldown = b.SocialCooldown = 0;
         a.CheerRemaining = b.CheerRemaining = 0;
-        a.Action = b.Action = "休憩";
+        a.Activity = b.Activity = BirdActivity.Rest;
         Check(t.TryStartCompanionship(a, b, t.At(2, 0)), "repeat visit can start");
         Run(t, 22);
     }
@@ -163,7 +163,7 @@ public static class SocialChecks
             Run(r, 1);
             Check(x.Y > 0 && Math.Abs(x.Y - y.Y) < .01f && Math.Abs(x.X - y.X) > .45f, "pair rests side by side above destination " + kind);
             if (kind == FacilityKind.Fountain)
-                Check(x.Action == "水浴び" && y.Action == "水浴び" && r.ActivityOf(x).Contains("と水浴び中"), "both birds bathe with companion label");
+                Check(x.Activity == BirdActivity.Bathe && y.Activity == BirdActivity.Bathe && r.ActivityOf(x).Contains("と水浴び中"), "both birds bathe with companion label");
             if (kind == FacilityKind.Plaza)
                 r.Move(r.At(2, 0).Id, 4, 4);
             else
@@ -232,10 +232,10 @@ public static class SocialChecks
         missing.Birds.Remove(b);
         missing.Tick(.1f);
         Check(a.CompanionId == -1, "missing partner is handled safely");
-        foreach (string action in new[]{"食事", "水浴び", "ごきげんクルクル"})
+        foreach (var action in new[]{BirdActivity.Eat, BirdActivity.Bathe, BirdActivity.HappySpin})
         {
             var busy = Fixture();
-            busy.Birds[0].Action = action;
+            busy.Birds[0].Activity = action;
             Check(!busy.TryStartCompanionship(busy.Birds[0], busy.Birds[1], busy.At(2, 0)), "socializing does not interrupt " + action);
         }
 

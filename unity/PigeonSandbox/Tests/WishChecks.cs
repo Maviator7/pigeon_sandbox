@@ -36,24 +36,24 @@ public static class WishChecks
         bird.X = 4.4f;
         bird.Z = 5.36f;
         bird.Y = 0;
-        bird.Action = "水浴び";
+        bird.Activity = BirdActivity.Bathe;
         bird.Wait = 10;
         bird.Decision = 20;
         bird.SocialCooldown = 100;
         Run(t, 1);
-        bird.Action = "休憩";
+        bird.Activity = BirdActivity.Rest;
         Run(t, .1f);
-        bird.Action = "水浴び";
+        bird.Activity = BirdActivity.Bathe;
         Run(t, 1.2f);
         Check(!wish.Complete, "interrupted visit resets fulfillment timer");
         Run(t, 1.1f);
         Check(wish.Complete, "owner actually bathing fulfills wish");
-        Check(bird.Action == "水浴び", "thanks does not interrupt current bath");
+        Check(bird.Activity == BirdActivity.Bathe, "thanks does not interrupt current bath");
         bool danced = false;
         for (int i = 0; i < 150; i++)
         {
             t.Tick(.1f);
-            danced |= bird.Action == "ありがとうのクルクル";
+            danced |= bird.Activity == BirdActivity.ThanksSpin;
         }
 
         Check(danced, "fulfilled owner celebrates when activity finishes");
@@ -91,7 +91,7 @@ public static class WishChecks
         shy.TargetId = quiet.At(-2, 1).Id;
         shy.X = -3.4f;
         shy.Z = 2.2f;
-        shy.Action = "休憩";
+        shy.Activity = BirdActivity.Rest;
         shy.Wait = 10;
         shy.Decision = 20;
         shy.SocialCooldown = 100;
@@ -116,7 +116,7 @@ public static class WishChecks
         for (int i = 0; i < 800; i++)
         {
             t.Tick(.1f);
-            bool now = bird.Action == "ありがとうのクルクル";
+            bool now = bird.Activity == BirdActivity.ThanksSpin;
             if (now && !thanking)
                 gratitude++;
             thanking = now;
