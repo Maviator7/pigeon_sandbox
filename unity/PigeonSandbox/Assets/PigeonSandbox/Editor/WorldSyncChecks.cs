@@ -65,6 +65,32 @@ namespace PigeonSandbox.Editor
                 world.Sync(town, true);
                 var tree = town.At(1, 0);
                 Check(world.FacilityObject(tree.Id).GetComponent<MeshFilter>().sharedMesh.bounds.max.y >= 2.5f, "winter tree supports a perched pigeon");
+                var district = new TownSimulation(12);
+                district.Money = 20000;
+                while (district.CanExpand)
+                    Check(district.ExpandTown(), "district setup expands station");
+                world.Sync(district, true);
+                int stationVertices = world.transform.Find("Town ground").GetComponent<MeshFilter>().sharedMesh.vertexCount;
+                int beforeUnlockBakes = MeshBaker.MeshesBaked;
+                Check(district.UnlockWaterfront(), "district setup unlocks annex");
+                world.Sync(district, true);
+                var waterfrontMesh = world.transform.Find("Town ground").GetComponent<MeshFilter>().sharedMesh;
+                Check(MeshBaker.MeshesBaked == beforeUnlockBakes + 1, "waterfront unlock bakes terrain once");
+                Check(waterfrontMesh.vertexCount >= stationVertices + 49 * 24, "waterfront terrain includes 49 plots");
+                Check(waterfrontMesh.bounds.max.x > 37, "waterfront terrain includes eastern river");
+                bool riverColor = false;
+                foreach (var color in waterfrontMesh.colors)
+                    if (color.b > .55f && color.g > .55f && color.r < .5f)
+                        riverColor = true;
+                Check(riverColor, "waterfront baked mesh contains visible river color");
+                Color springWaterfront = waterfrontMesh.colors[0];
+                world.Sync(district, true);
+                Check(MeshBaker.MeshesBaked == beforeUnlockBakes + 1, "unchanged waterfront does not rebuild terrain");
+                var districtWinter = district.Capture();
+                districtWinter.Time = 45 * TownSimulation.DayLength;
+                Check(district.Restore(districtWinter), "waterfront advances to winter");
+                world.Sync(district, true);
+                Check(world.transform.Find("Town ground").GetComponent<MeshFilter>().sharedMesh.colors[0] != springWaterfront, "waterfront terrain changes with season");
                 // Many identical pigeons and facilities must still share a small set of materials.
                 var full = TownSimulation.CreateBenchmark();
                 world.Sync(full, true);

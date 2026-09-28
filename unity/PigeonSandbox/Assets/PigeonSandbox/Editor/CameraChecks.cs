@@ -91,6 +91,23 @@ namespace PigeonSandbox.Editor
                         Check(corner.x >= 0 && corner.x <= 1 && corner.y >= 0 && corner.y <= 1, "expanded corners fit in overview");
                     }
 
+                Check(town.UnlockWaterfront(), "waterfront opens in camera test");
+                Call(app, "FocusDistrict", true);
+                Step(app);
+                Check(Mathf.Abs(Read<Vector3>(app, "cameraFocus").x - 12 * TownSimulation.CellSize) < .001f && Mathf.Abs(camera.orthographicSize - 15) < .001f, "waterfront shortcut centers district");
+                Call(app, "FocusDistrict", false);
+                Step(app);
+                Check(Mathf.Abs(Read<Vector3>(app, "cameraFocus").x) < .001f && Mathf.Abs(camera.orthographicSize - 26) < .001f, "station shortcut returns to station");
+                Call(app, "ResetCamera");
+                Step(app);
+                Check(Mathf.Abs(Read<Vector3>(app, "cameraFocus").x) < .001f && Mathf.Abs(camera.orthographicSize - 26) < .001f, "existing overview returns to station");
+                Call(app, "FocusDistrict", true);
+                Step(app);
+                var riverEdge = camera.WorldToViewportPoint(new Vector3(18.9f * TownSimulation.CellSize, 0, 0));
+                Check(riverEdge.x >= 0 && riverEdge.x <= 1 && riverEdge.y >= 0 && riverEdge.y <= 1, "river fits in waterfront view");
+                var plotScreen = camera.WorldToScreenPoint(new Vector3(12 * TownSimulation.CellSize, 0, 0));
+                object[] plotArgs = {new Vector2(plotScreen.x, plotScreen.y), 0, 0};
+                Check((bool)Call(app, "GridPoint", plotArgs) && (int)plotArgs[1] == 12 && (int)plotArgs[2] == 0, "waterfront plot is selectable through camera");
                 Debug.Log("PIGEON CAMERA VERIFICATION PASSED");
             }
             finally

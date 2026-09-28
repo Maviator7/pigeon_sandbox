@@ -48,11 +48,12 @@ namespace PigeonSandbox
 
         Transform terrain;
         int terrainRadius = -1;
+        bool terrainWaterfront;
         TownSeason renderSeason;
         TownSeason terrainSeason;
-        void ResizeTerrain(int radius, TownSeason season)
+        void ResizeTerrain(int radius, TownSeason season, bool waterfront)
         {
-            if (terrainRadius == radius && terrainSeason == season)
+            if (terrainRadius == radius && terrainSeason == season && terrainWaterfront == waterfront)
                 return;
             if (terrain != null)
             {
@@ -64,11 +65,33 @@ namespace PigeonSandbox
             terrain.SetParent(transform, false);
             terrainRadius = radius;
             terrainSeason = season;
+            terrainWaterfront = waterfront;
             float edge = (radius + .73f) * 2.2f;
             Shape("Town island", PrimitiveType.Cube, terrain, new Vector3(0, -.46f, 0), new Vector3((radius * 2 + 2) * 2.2f, .8f, (radius * 2 + 2) * 2.2f), "A6B29A");
             for (int x = -radius; x <= radius; x++)
                 for (int z = -radius; z <= radius; z++)
                     Shape("Plot " + x + "," + z, PrimitiveType.Cube, terrain, new Vector3(x * 2.2f, -.04f, z * 2.2f), new Vector3(2.16f, .12f, 2.16f), (x + z) % 2 == 0 ? "DFDDCB" : "D8D8C5");
+            if (waterfront)
+            {
+                Shape("Waterfront island", PrimitiveType.Cube, terrain, new Vector3(12 * 2.2f, -.46f, 0), new Vector3(7.1f * 2.2f, .8f, 7.1f * 2.2f), "A6B29A");
+                int[] shoulder = {8, 7, 6, 6, 5, 4, 4};
+                for (int x = 9; x <= 15; x++)
+                {
+                    for (int z = -3; z <= 3; z++)
+                        Shape("Waterfront plot " + x + "," + z, PrimitiveType.Cube, terrain, new Vector3(x * 2.2f, -.04f, z * 2.2f), new Vector3(2.16f, .12f, 2.16f), (x + z) % 2 == 0 ? "DFDDCB" : "D8D8C5");
+                    // Landscaped shoulder covers diagonal bird routes from the station corners.
+                    for (int z = 4; z <= shoulder[x - 9]; z++)
+                        foreach (int side in new[]{-1, 1})
+                            Shape("Waterfront green shoulder", PrimitiveType.Cube, terrain, new Vector3(x * 2.2f, -.04f, side * z * 2.2f), new Vector3(2.22f, .12f, 2.22f), "94AC7F");
+                }
+
+                Shape("Waterfront promenade", PrimitiveType.Cube, terrain, new Vector3(15.78f * 2.2f, -.1f, 0), new Vector3(1.4f, .2f, 7.5f * 2.2f), "D9CDAF");
+                Shape("River bank", PrimitiveType.Cube, terrain, new Vector3(16.45f * 2.2f, -.19f, 0), new Vector3(.34f * 2.2f, .3f, 9 * 2.2f), "A6B29A");
+                Shape("River", PrimitiveType.Cube, terrain, new Vector3(17.9f * 2.2f, -.29f, 0), new Vector3(2.7f * 2.2f, .12f, 10 * 2.2f), "70ABA9");
+                for (int z = -3; z <= 3; z += 3)
+                    Shape("River highlight", PrimitiveType.Cube, terrain, new Vector3(17.7f * 2.2f, -.21f, z * 2.2f), new Vector3(.65f * 2.2f, .025f, .1f * 2.2f), "B3D7CF");
+            }
+
             for (int i = 0; i < 5; i++)
             {
                 Shape("Station steps", PrimitiveType.Cube, terrain, new Vector3(-7 + i * 1.6f, .1f, edge), new Vector3(1.5f, .3f, .6f), "B8BDAA");
@@ -145,6 +168,8 @@ namespace PigeonSandbox
                         return "D1A575";
                     case "E8CC81":
                         return "DDB96F";
+                    case "70ABA9":
+                        return "719B9A";
                 }
             }
             else if (renderSeason == TownSeason.Winter)
@@ -163,6 +188,8 @@ namespace PigeonSandbox
                         return "B5BCA8";
                     case "668966":
                         return "8A9984";
+                    case "70ABA9":
+                        return "8EAEB4";
                 }
             }
 
@@ -353,7 +380,7 @@ namespace PigeonSandbox
         {
             bool seasonChanged = renderSeason != town.Season;
             renderSeason = town.Season;
-            ResizeTerrain(town.MapRadius, renderSeason);
+            ResizeTerrain(town.MapRadius, renderSeason, town.WaterfrontUnlocked);
             if (seasonChanged)
                 seasonalRebuildPending = true;
             if (revision != town.Revision || seasonalRebuildPending)

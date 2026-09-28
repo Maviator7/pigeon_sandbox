@@ -71,7 +71,7 @@ namespace PigeonSandbox
             font = Resources.Load<Font>("NotoSansJP");
             if (benchmark)
             {
-                town = TownSimulation.CreateBenchmark();
+                town = Array.IndexOf(Environment.GetCommandLineArgs(), "-benchmark-waterfront") >= 0 ? TownSimulation.CreateWaterfrontBenchmark() : TownSimulation.CreateBenchmark();
                 hideUi = Array.IndexOf(Environment.GetCommandLineArgs(), "-benchmark-no-ui") >= 0;
                 foreach (string arg in Environment.GetCommandLineArgs())
                     if (arg.StartsWith("-benchmark-day=", StringComparison.Ordinal) && int.TryParse(arg.Substring(15), out int day) && day >= 1)
@@ -93,7 +93,9 @@ namespace PigeonSandbox
             postcardCount = town.Postcards.Count;
             seasonalPostcardCount = town.SeasonalPostcards.Count;
             displayedSeason = town.Season;
-            zoom = targetZoom = 14 + town.ExpansionLevel * 3;
+            zoom = targetZoom = town.WaterfrontUnlocked ? 30 : 14 + town.ExpansionLevel * 3;
+            if (town.WaterfrontUnlocked)
+                cameraFocus.x = 10;
             world = new GameObject("Mayor town").AddComponent<TownWorld>();
             world.Initialize();
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
@@ -275,6 +277,13 @@ namespace PigeonSandbox
             pitch = 48;
         }
 
+        void FocusDistrict(bool waterfront)
+        {
+            StopFollowing();
+            cameraFocus = new Vector3(waterfront ? 12 * TownSimulation.CellSize : 0, .3f, 0);
+            targetZoom = waterfront ? 15 : 14 + town.ExpansionLevel * 3;
+        }
+
         void PanCamera(Vector2 from, Vector2 to)
         {
             var plane = new Plane(Vector3.up, new Vector3(0, cameraFocus.y, 0));
@@ -284,7 +293,7 @@ namespace PigeonSandbox
                 return;
             followedBird = -1;
             cameraFocus += a.GetPoint(da) - b.GetPoint(db);
-            cameraFocus.x = Mathf.Clamp(cameraFocus.x, -town.MapEdge - 4, town.MapEdge + 4);
+            cameraFocus.x = Mathf.Clamp(cameraFocus.x, -town.MapEdge - 4, (town.WaterfrontUnlocked ? town.WaterfrontEastEdge : town.MapEdge) + 4);
             cameraFocus.z = Mathf.Clamp(cameraFocus.z, -town.MapEdge - 4, town.MapEdge + 4);
         }
 
@@ -393,10 +402,20 @@ namespace PigeonSandbox
                 targetZoom = Mathf.Min(32, targetZoom + 2);
             if (Button(new Rect(x + 100, y, 96, 44), "街全体"))
                 ResetCamera();
+            if (town.WaterfrontUnlocked)
+            {
+                if (Button(new Rect(x + 202, y, 62, 44), "駅前"))
+                    FocusDistrict(false);
+                if (Button(new Rect(x + 270, y, 62, 44), "水辺"))
+                    FocusDistrict(true);
+            }
+
             var bird = town.Birds.Find(b => b.Id == followedBird);
             string caption = bird == null ? "ドラッグで移動" : bird.Name + "を追従中";
-            float captionWidth = r.width - 220 - (bird != null ? 104 : 0);
-            GUI.Label(new Rect(x + 208, y + 9, captionWidth, 34), caption, small);
+            float captionX = town.WaterfrontUnlocked ? x + 344 : x + 208;
+            float captionWidth = Mathf.Max(0, r.xMax - captionX - (bird != null ? 108 : 8));
+            if (captionWidth >= 90)
+                GUI.Label(new Rect(captionX, y + 9, captionWidth, 34), caption, small);
             if (bird != null && Button(new Rect(r.xMax - 100, y, 96, 44), "追従解除"))
                 StopFollowing();
         }
@@ -432,7 +451,7 @@ namespace PigeonSandbox
             var p = ray.GetPoint(d);
             x = Mathf.RoundToInt(p.x / 2.2f);
             z = Mathf.RoundToInt(p.z / 2.2f);
-            return x >= -town.MapRadius && x <= town.MapRadius && z >= -town.MapRadius && z <= town.MapRadius;
+            return town.IsPlayablePlot(x, z);
         }
 
         void ClickTown(Vector2 point)
@@ -745,12 +764,16 @@ namespace PigeonSandbox
                 tool = Tool.Inspect;
             FlowLabel(x, inspectY + 52, w, "左クリック：建設・選択\n左ドラッグ：マップ移動\n右ドラッグ：視点回転\nホイール / ＋−：ズーム", small);
             float expansionY = r.yMax - 166;
-            FlowLabel(x, expansionY, w, "街の広さ " + town.MapSize + " × " + town.MapSize + "マス", small);
-            string expansion = town.CanExpand ? "土地を広げる ¥" + town.ExpansionCost + "\n＋" + ((town.MapSize + 2) * (town.MapSize + 2) - town.MapSize * town.MapSize) + "マス（外周1マス）" : "最大まで拡張しました";
-            if (Button(new Rect(x, r.yMax - 130, w, 62), expansion, false, town.CanExpand && town.Money >= town.ExpansionCost) && town.ExpandTown())
+            FlowLabel(x, expansionY, w, town.WaterfrontUnlocked ? "駅前 " + town.MapSize + "×" + town.MapSize + " ＋ 水辺 49マス" : "街の広さ " + town.MapSize + " × " + town.MapSize + "マス", small);
+            string expansion = town.CanExpand ? "土地を広げる ¥" + town.ExpansionCost + "\n＋" + ((town.MapSize + 2) * (town.MapSize + 2) - town.MapSize * town.MapSize) + "マス（外周1マス）" : town.WaterfrontUnlocked ? "水辺地区 開放済み" : "水辺地区を開く ¥" + TownSimulation.WaterfrontCost + "\n＋49マス";
+            bool canAfford = town.CanExpand ? town.Money >= town.ExpansionCost : !town.WaterfrontUnlocked && town.Money >= TownSimulation.WaterfrontCost;
+            if (Button(new Rect(x, r.yMax - 130, w, 62), expansion, false, canAfford) && (town.CanExpand ? town.ExpandTown() : town.UnlockWaterfront()))
             {
                 CancelRename();
-                ResetCamera();
+                if (town.WaterfrontUnlocked)
+                    FocusDistrict(true);
+                else
+                    ResetCamera();
                 world.Sync(town, paused);
                 message = town.Notice;
                 Save(false);
@@ -815,6 +838,18 @@ namespace PigeonSandbox
                     y = FlowLabel(0, y, width, (request.Complete ? "✓ " : "0" + (i + 1) + "  ") + request.Title, heading, draw);
                     y = FlowLabel(0, y, width, request.Description, small, draw);
                     y = FlowLabel(0, y, width, request.Complete ? "達成済み · お礼を受け取りました" : "お礼 ¥" + request.Reward, small, draw) + 20;
+                }
+
+                if (town.WaterfrontUnlocked)
+                {
+                    y = FlowLabel(0, y, width, "水辺地区からのおたより", heading, draw) + 12;
+                    for (int i = 0; i < town.WaterfrontRequests.Count; i++)
+                    {
+                        var request = town.WaterfrontRequests[i];
+                        y = FlowLabel(0, y, width, (request.Complete ? "✓ " : "○ ") + request.Title, heading, draw);
+                        y = FlowLabel(0, y, width, request.Description, small, draw);
+                        y = FlowLabel(0, y, width, request.Complete ? "達成済み · お礼を受け取りました" : "お礼 ¥" + request.Reward, small, draw) + 20;
+                    }
                 }
 
                 y = FlowLabel(0, y, width, "鳩を追い払う必要はありません。居場所と人の通路を、配置で整えましょう。", small, draw);

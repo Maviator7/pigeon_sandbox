@@ -19,6 +19,7 @@ public static class TownChecks
 
     public static void RunAll()
     {
+        DistrictChecks.RunAll();
         var t = new TownSimulation(7);
         float money = t.Money;
         Check(t.Build(FacilityKind.Bakery, 1, 0), "build bakery");

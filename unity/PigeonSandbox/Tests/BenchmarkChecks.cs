@@ -45,5 +45,8 @@ public static class BenchmarkChecks
         Check(perTick < 512, "benchmark town tick allocates under 512 bytes");
         var restored = new TownSimulation();
         Check(restored.Restore(town.Capture()) && restored.Facilities.Count == town.Facilities.Count, "benchmark town survives save and restore");
+        var waterfront = TownSimulation.CreateWaterfrontBenchmark();
+        Check(waterfront.WaterfrontUnlocked && waterfront.Facilities.Count == 338 && waterfront.Birds.Count == 15, "waterfront benchmark fills both districts with 15 birds");
+        Check(!waterfront.CanPlace(15, 3) && !waterfront.CanPlace(9, 4), "waterfront benchmark fills only buildable plots");
     }
 }

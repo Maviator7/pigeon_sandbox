@@ -36,5 +36,23 @@ namespace PigeonSandbox
             town.Changed("ベンチマーク用の街です。保存されません。");
             return town;
         }
+
+        public static TownSimulation CreateWaterfrontBenchmark(int seed = 5)
+        {
+            var town = CreateBenchmark(seed);
+            town.UnlockWaterfront();
+            var kinds = (FacilityKind[])Enum.GetValues(typeof(FacilityKind));
+            for (int x = 9; x <= 15; x++)
+                for (int z = -3; z <= 3; z++)
+                {
+                    int mix = ((x * 3 + z * 5) % kinds.Length + kinds.Length) % kinds.Length;
+                    town.AddFacility(kinds[mix], x, z);
+                    town.Facilities[town.Facilities.Count - 1].Level = 1 + ((x + z) % 3 + 3) % 3;
+                }
+
+            town.Money = 100000;
+            town.Changed("水辺地区ベンチマーク用の街です。保存されません。");
+            return town;
+        }
     }
 }

@@ -108,6 +108,7 @@ namespace PigeonSandbox
         public string Action = "お買い物へ";
         internal int TargetId = -1;
         internal bool Bought;
+        internal bool FromWaterfront;
         internal float Wait;
     }
 
@@ -131,6 +132,8 @@ namespace PigeonSandbox
         public float Money, Time;
         public int Purchases, ExpansionLevel;
         public bool[] CompletedRequests;
+        public bool WaterfrontUnlocked;
+        public bool[] CompletedWaterfrontRequests;
         public int NextFestivalDay;
         public FestivalKind SelectedFestival;
         public TownFestivalState Festival;
@@ -273,13 +276,15 @@ namespace PigeonSandbox
 
         public TownSave Capture()
         {
-            var save = new TownSave{SaveVersion = CurrentSaveVersion, Wishes = CopyWishes(Wishes), Friendships = CopyFriendships(friendships), Money = Money, Time = Time, Purchases = Purchases, ExpansionLevel = ExpansionLevel, NestBoxes = NestBoxes, BathPriority = BathPriority, CafeSupport = CafeSupport, CompletedRequests = new bool[Requests.Count], NextFestivalDay = NextFestivalDay, SelectedFestival = SelectedFestival, Festival = CopyFestival(), Postcards = CopyPostcards(Postcards), SeasonalFestival = CopySeasonalFestival(seasonalFestival), SeasonalPostcards = CopySeasonalPostcards(SeasonalPostcards)};
+            var save = new TownSave{SaveVersion = CurrentSaveVersion, Wishes = CopyWishes(Wishes), Friendships = CopyFriendships(friendships), Money = Money, Time = Time, Purchases = Purchases, ExpansionLevel = ExpansionLevel, NestBoxes = NestBoxes, BathPriority = BathPriority, CafeSupport = CafeSupport, CompletedRequests = new bool[Requests.Count], WaterfrontUnlocked = WaterfrontUnlocked, CompletedWaterfrontRequests = new bool[WaterfrontRequests.Count], NextFestivalDay = NextFestivalDay, SelectedFestival = SelectedFestival, Festival = CopyFestival(), Postcards = CopyPostcards(Postcards), SeasonalFestival = CopySeasonalFestival(seasonalFestival), SeasonalPostcards = CopySeasonalPostcards(SeasonalPostcards)};
             foreach (var f in Facilities)
                 save.Facilities.Add(new Facility{Id = f.Id, Kind = f.Kind, X = f.X, Z = f.Z, Level = f.Level});
             foreach (var b in Birds)
                 save.Birds.Add(new TownBird{Id = b.Id, Name = b.Name, Personality = b.Personality, Plumage = FeatherOf(b), Rare = b.Rare, Mayor = b.Mayor, X = b.X, Y = b.Y, Z = b.Z, Heading = b.Heading, Activity = b.Activity, TargetId = b.TargetId});
             for (int i = 0; i < Requests.Count; i++)
                 save.CompletedRequests[i] = Requests[i].Complete;
+            for (int i = 0; i < WaterfrontRequests.Count; i++)
+                save.CompletedWaterfrontRequests[i] = WaterfrontRequests[i].Complete;
             return save;
         }
 
@@ -289,12 +294,19 @@ namespace PigeonSandbox
                 return false;
             if (save.ExpansionLevel < 0 || save.ExpansionLevel > 4)
                 return false;
+            bool waterfront = save.SaveVersion >= 3 && save.WaterfrontUnlocked;
+            if (save.SaveVersion >= 3 && (save.CompletedWaterfrontRequests == null || save.CompletedWaterfrontRequests.Length != WaterfrontRequests.Count || waterfront && save.ExpansionLevel != 4))
+                return false;
+            if (!waterfront && save.SaveVersion >= 3)
+                foreach (bool complete in save.CompletedWaterfrontRequests)
+                    if (complete)
+                        return false;
             int radius = 4 + save.ExpansionLevel;
             var ids = new HashSet<int>();
             var cells = new HashSet<string>();
             foreach (var f in save.Facilities)
             {
-                if (f == null || f.Id < 1 || !ids.Add(f.Id) || !cells.Add(f.X + ":" + f.Z) || Math.Abs((long)f.X) > radius || Math.Abs((long)f.Z) > radius || f.Level < 1 || f.Level > 3 || !Enum.IsDefined(typeof(FacilityKind), f.Kind))
+                if (f == null || f.Id < 1 || !ids.Add(f.Id) || !cells.Add(f.X + ":" + f.Z) || !ValidWaterfrontPlotForSave(f.X, f.Z, radius, waterfront) || f.Level < 1 || f.Level > 3 || !Enum.IsDefined(typeof(FacilityKind), f.Kind))
                     return false;
             }
 
@@ -314,6 +326,8 @@ namespace PigeonSandbox
             friendships.AddRange(restoredFriendships);
             Array.Clear(plumageClocks, 0, plumageClocks.Length);
             ExpansionLevel = save.ExpansionLevel;
+            WaterfrontUnlocked = waterfront;
+            waterfrontPurchaseWitnessed = false;
             Facilities.Clear();
             Birds.Clear();
             Visitors.Clear();
@@ -326,7 +340,9 @@ namespace PigeonSandbox
 
             foreach (var b in save.Birds)
             {
-                Birds.Add(new TownBird{Id = b.Id, Name = b.Name, Personality = b.Personality, Plumage = FeatherOf(b), Rare = b.Rare, Mayor = b.Mayor, X = FinitePosition(b.X), Z = FinitePosition(b.Z), Activity = BirdActivity.Stroll, TargetId = -1});
+                float x = FinitePosition(b.X, true), z = FinitePosition(b.Z, false);
+                ClampBirdToGround(ref x, ref z);
+                Birds.Add(new TownBird{Id = b.Id, Name = b.Name, Personality = b.Personality, Plumage = FeatherOf(b), Rare = b.Rare, Mayor = b.Mayor, X = x, Z = z, Activity = BirdActivity.Stroll, TargetId = -1});
                 nextId = Math.Max(nextId, b.Id + 1);
             }
 
@@ -346,13 +362,15 @@ namespace PigeonSandbox
             rareClock = spawnClock = upkeepClock = growthClock = metricClock = socialClock = 0;
             for (int i = 0; i < Requests.Count; i++)
                 Requests[i].Complete = save.CompletedRequests != null && i < save.CompletedRequests.Length && save.CompletedRequests[i];
+            for (int i = 0; i < WaterfrontRequests.Count; i++)
+                WaterfrontRequests[i].Complete = waterfront && save.CompletedWaterfrontRequests[i];
             Changed("保存したまちを再開しました。");
             return true;
         }
 
-        float FinitePosition(float value)
+        float FinitePosition(float value, bool xAxis)
         {
-            return float.IsNaN(value) || float.IsInfinity(value) ? 0 : Clamp(value, -MapEdge, MapEdge);
+            return float.IsNaN(value) || float.IsInfinity(value) ? 0 : Clamp(value, -MapEdge, xAxis && WaterfrontUnlocked ? (15.55f * CellSize) : MapEdge);
         }
 
         public static int Cost(FacilityKind k)
@@ -365,7 +383,7 @@ namespace PigeonSandbox
             return new[]{"パン屋", "噴水", "集合住宅", "街路樹", "広場", "時計台", "オープンカフェ", "花壇の公園"}[(int)k];
         }
 
-        public const int CurrentSaveVersion = 2;
+        public const int CurrentSaveVersion = 3;
         public static string ActivityName(BirdActivity activity) => new[]{"散歩", "休憩", "水浴び", "食事", "羽繕い", "日向ぼっこ", "眺める", "テラスで休憩", "人と交流", "仲間と散歩", "再会のクルクル", "ごきげんクルクル", "ありがとうのクルクル"}[(int)activity];
         public static string PersonalityName(Personality p)
         {
@@ -471,7 +489,7 @@ namespace PigeonSandbox
 
         public bool CanPlace(int x, int z, int ignoreId = -1)
         {
-            if (x < -MapRadius || x > MapRadius || z < -MapRadius || z > MapRadius)
+            if (!IsPlayablePlot(x, z))
                 return false;
             foreach (var f in Facilities)
                 if (f.Id != ignoreId && f.X == x && f.Z == z)
@@ -620,6 +638,7 @@ namespace PigeonSandbox
             Reward(0, market > 0);
             Reward(1, baths > 0 && home > 0);
             Reward(2, rareArrived);
+            EvaluateWaterfrontRequests();
         }
 
         void Reward(int index, bool complete)
@@ -660,6 +679,14 @@ namespace PigeonSandbox
                     s += 3;
                 if (f.Kind == FacilityKind.Park && NearKind(f, FacilityKind.Housing))
                     s += 3;
+                if (WaterfrontUnlocked && IsWaterfrontPlot(f.X, f.Z))
+                {
+                    if (b.Personality == Personality.Bather && (f.Kind == FacilityKind.Fountain || f.Kind == FacilityKind.Park))
+                        s += 4;
+                    if (b.X >= 8 * CellSize)
+                        s += Math.Max(0, 5 - Distance(f.X * CellSize - b.X, f.Z * CellSize - b.Z) / CellSize);
+                }
+
                 switch (b.Personality)
                 {
                     case Personality.Foodie:
@@ -779,7 +806,9 @@ namespace PigeonSandbox
             if (spawnClock >= Math.Max(2, 6 - Levels(FacilityKind.ClockTower) * .5f - (CafeSupport ? 1 : 0)) && Visitors.Count < 18)
             {
                 spawnClock = 0;
-                Visitors.Add(new Visitor{Id = nextId++, X = -MapEdge, Z = ((float)random.NextDouble() * 2 - 1) * MapRadius * CellSize});
+                int id = nextId++;
+                var localVenue = WaterfrontUnlocked && id % 3 == 0 ? WaterfrontVenueFor(id) : null;
+                Visitors.Add(localVenue == null ? new Visitor{Id = id, X = -MapEdge, Z = ((float)random.NextDouble() * 2 - 1) * MapRadius * CellSize} : new Visitor{Id = id, X = WaterfrontEastEdge, Z = ((float)random.NextDouble() * 2 - 1) * 3 * CellSize, TargetId = localVenue.Id, FromWaterfront = true});
             }
 
             TickCompany(dt);
@@ -828,6 +857,13 @@ namespace PigeonSandbox
                     target = Select(b);
                     b.TargetId = target == null ? -1 : target.Id;
                     b.Decision = 9 + (float)random.NextDouble() * 9;
+                    if (WaterfrontUnlocked && target != null)
+                    {
+                        float trip = Distance(target.X * CellSize - b.X, target.Z * CellSize - b.Z);
+                        if (trip > 8)
+                            b.Decision = Math.Max(b.Decision, Math.Min(140, trip / .7f + (trip > 30 ? 40 : 12)));
+                    }
+
                     b.Wait = 0;
                 }
 
@@ -884,6 +920,13 @@ namespace PigeonSandbox
                 if (v.Wait > 0)
                     continue;
                 var target = Find(v.TargetId);
+                if (v.FromWaterfront && target == null)
+                {
+                    v.Bought = true;
+                    v.TargetId = -1;
+                    v.Action = "水辺から帰り道";
+                }
+
                 if (!v.Bought && target == null)
                 {
                     target = v.Id % 4 == 0 ? FirstOfKind(FacilityKind.Park, FacilityKind.Park) : null;
@@ -894,7 +937,7 @@ namespace PigeonSandbox
                     v.TargetId = target == null ? -1 : target.Id;
                 }
 
-                float tx = MapEdge, tz = v.Id % 5 - 2;
+                float tx = v.FromWaterfront ? WaterfrontEastEdge : MapEdge, tz = v.Id % 5 - 2;
                 if (!v.Bought && target != null)
                     Approach(target, v.Id, out tx, out tz);
                 if (Walk(ref v.X, ref v.Z, ref v.Heading, tx, tz, 1.5f, dt))
@@ -916,6 +959,7 @@ namespace PigeonSandbox
                         v.Action = target.Kind == FacilityKind.Cafe ? "カフェでひと休み" : "パンを購入！";
                         WitnessFestivalPurchase(target);
                         WitnessSeasonalPurchase(target);
+                        WitnessWaterfrontPurchase(target);
                     }
                     else
                         v.Action = "公園でひと休み";
