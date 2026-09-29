@@ -753,6 +753,10 @@ namespace PigeonSandbox
         string CompactAmount(float amount)
         {
             float magnitude = Mathf.Abs(amount);
+            if (magnitude >= 1e16f)
+                return amount.ToString("0.#E+0");
+            if (magnitude >= 1e12f)
+                return (amount / 1e12f).ToString("0.#") + "兆";
             if (magnitude >= 100000000)
                 return (amount / 100000000).ToString("0.#") + "億";
             if (magnitude >= 10000)

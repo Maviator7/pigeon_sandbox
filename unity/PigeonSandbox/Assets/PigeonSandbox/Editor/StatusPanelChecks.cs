@@ -78,6 +78,8 @@ namespace PigeonSandbox.Editor
                 Check(left.yMin >= 700 && right.yMin >= 700 && buttons.yMax <= 892, "footer contents remain inside the fixed panel");
                 string large = (string)Call(app, "CompactAmount", 12345678f);
                 Check(large.Contains("万") || large.Contains("億"), "large amounts have a compact readable unit");
+                string extreme = (string)Call(app, "CompactAmount", float.MaxValue);
+                Check(extreme.Length < 16, "extreme finite budget values stay bounded");
                 Debug.Log("PIGEON STATUS PANEL VERIFICATION PASSED");
             }
             finally
