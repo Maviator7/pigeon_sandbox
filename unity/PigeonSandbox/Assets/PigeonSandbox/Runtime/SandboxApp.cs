@@ -16,7 +16,7 @@ namespace PigeonSandbox
         Camera view;
         Font font;
         Light sun;
-        GUIStyle title, heading, text, small, button, marker, nameInput;
+        GUIStyle title, heading, text, small, button, marker, nameInput, statusLabel, budgetLine, budgetDetail;
         float yaw = 35, pitch = 48, zoom = 14, saveClock;
         int speed = 1, selected = -1, tab;
         bool paused;
@@ -34,7 +34,8 @@ namespace PigeonSandbox
         }
 
         Tool tool = Tool.Build;
-        Vector2 pointerStart, scroll, lastPointer, buildScroll;
+        Vector2 pointerStart, scroll, lastPointer, buildScroll, footerLeftScroll, footerRightScroll;
+        string lastFooterNotice;
         Vector3 cameraFocus = new Vector3(0, .3f, 0);
         int followedBird = -1;
         int editingBird = -1;
@@ -44,6 +45,8 @@ namespace PigeonSandbox
         float targetZoom = 14;
         bool pointerInTown, dragged, multiTouch;
         string message = "広場のそばにベーカリーを建ててみましょう。";
+        bool messageIsHint = true;
+        bool messageIsEvent;
         float Scale => Mathf.Min(Screen.width / 1440f, Screen.height / 900f);
         float Width => Screen.width / Scale;
         float Height => Screen.height / Scale;
@@ -82,7 +85,7 @@ namespace PigeonSandbox
 
                 if (Array.IndexOf(Environment.GetCommandLineArgs(), "-benchmark-boundary") >= 0)
                     town.Time += TownSimulation.DayLength - 7;
-                message = "ベンチマーク用の街です。変更は保存されません。";
+                ShowFeedback("ベンチマーク用の街です。変更は保存されません。");
             }
             else
             {
@@ -195,7 +198,7 @@ namespace PigeonSandbox
             building = kind;
             tool = Tool.Build;
             selected = -1;
-            message = Tips[(int)kind];
+            ShowGuidance(Tips[(int)kind]);
         }
 
         void BeginRename(TownBird bird)
@@ -231,7 +234,7 @@ namespace PigeonSandbox
 
             string newName = town.Birds.Find(b => b.Id == editingBird).Name;
             CancelRename();
-            message = "名前を「" + newName + "」に変更しました。";
+            ShowFeedback("名前を「" + newName + "」に変更しました。");
             Save(false);
         }
 
@@ -463,32 +466,32 @@ namespace PigeonSandbox
             {
                 if (town.Move(selected, x, z))
                 {
-                    message = "移設しました。鳩の行き先も新しい配置に変わります。";
+                    ShowFeedback("移設しました。鳩の行き先も新しい配置に変わります。");
                     tool = Tool.Inspect;
                 }
                 else
-                    message = "空いているマスを選んでください。";
+                    ShowGuidance("空いているマスを選んでください。");
             }
             else if (existing != null)
             {
                 selected = existing.Id;
                 tool = Tool.Inspect;
-                message = Tips[(int)existing.Kind];
+                ShowGuidance(Tips[(int)existing.Kind]);
             }
             else if (tool == Tool.Build)
             {
                 if (town.Build(building, x, z))
                 {
                     selected = town.At(x, z).Id;
-                    message = Tips[(int)building];
+                    ShowGuidance(Tips[(int)building]);
                 }
                 else
-                    message = town.Notice;
+                    ShowGuidance(town.Notice);
             }
             else
             {
                 selected = -1;
-                message = "左の施設を選んで、空き地をクリックすると建設できます。";
+                ShowGuidance("左の施設を選んで、空き地をクリックすると建設できます。");
             }
         }
 
@@ -523,7 +526,7 @@ namespace PigeonSandbox
             {
                 displayedSeason = town.Season;
                 seasonToastUntil = UnityEngine.Time.realtimeSinceStartup + 5;
-                message = town.SeasonName + "になりました。街と鳩の過ごし方を眺めてみましょう。";
+                ShowEvent(town.SeasonName + "になりました。街と鳩の過ごし方を眺めてみましょう。");
             }
 
             world.Sync(town, paused);
@@ -532,7 +535,7 @@ namespace PigeonSandbox
             {
                 postcardCount = town.Postcards.Count;
                 postcardPage = 0;
-                message = town.Notice;
+                ShowEvent(town.Notice);
                 tab = 3;
                 scroll = new Vector2(0, 420);
                 Save(false);
@@ -542,7 +545,7 @@ namespace PigeonSandbox
             {
                 seasonalPostcardCount = town.SeasonalPostcards.Count;
                 seasonalPostcardPage = 0;
-                message = town.Notice;
+                ShowEvent(town.Notice);
                 tab = 3;
                 scroll = Vector2.zero;
                 Save(false);
@@ -564,11 +567,11 @@ namespace PigeonSandbox
             {
                 new TownSaveStore(SavePath).Write(JsonUtility.ToJson(town.Capture(), true));
                 if (notify)
-                    message = "街を保存しました。次回もここから再開します。";
+                    ShowFeedback("街を保存しました。次回もここから再開します。");
             }
             catch (Exception e)
             {
-                message = "保存できませんでした：" + e.Message;
+                ShowFeedback("保存できませんでした：" + e.Message);
             }
         }
 
@@ -594,9 +597,9 @@ namespace PigeonSandbox
 
             );
             if (json != null && town.Restore(JsonUtility.FromJson<TownSave>(json)))
-                message = rejected > 0 ? "最新の保存を読み込めなかったため、ひとつ前の保存から再開しました。" : "おかえりなさい、市長。保存した街を開きました。";
+                ShowFeedback(rejected > 0 ? "最新の保存を読み込めなかったため、ひとつ前の保存から再開しました。" : "おかえりなさい、市長。保存した街を開きました。");
             else if (rejected > 0)
-                message = "保存を読み込めなかったため、新しい広場から開始します。元のファイルは残してあります。";
+                ShowFeedback("保存を読み込めなかったため、新しい広場から開始します。元のファイルは残してあります。");
         }
 
         // iOS rarely calls OnApplicationQuit; backgrounding is the reliable moment to save.
@@ -638,6 +641,13 @@ namespace PigeonSandbox
             {fontSize = 30};
             button = new GUIStyle(text)
             {alignment = TextAnchor.MiddleCenter, fontSize = 15, fontStyle = FontStyle.Bold, wordWrap = true, padding = new RectOffset(8, 8, 6, 6)};
+            statusLabel = new GUIStyle(small)
+            {fontSize = 14, fontStyle = FontStyle.Bold, wordWrap = false};
+            statusLabel.normal.textColor = green;
+            budgetLine = new GUIStyle(heading)
+            {wordWrap = false};
+            budgetDetail = new GUIStyle(small)
+            {wordWrap = false};
         }
 
         void Panel(Rect r, Color c)
@@ -669,6 +679,97 @@ namespace PigeonSandbox
             bool hit = GUI.Button(r, value, button);
             button.normal.textColor = ink;
             return hit && enabled;
+        }
+
+        void ShowGuidance(string value)
+        {
+            message = value;
+            messageIsHint = true;
+            messageIsEvent = false;
+            footerLeftScroll = Vector2.zero;
+        }
+
+        void ShowFeedback(string value)
+        {
+            message = value;
+            messageIsHint = false;
+            messageIsEvent = false;
+            footerRightScroll = Vector2.zero;
+        }
+
+        void ShowEvent(string value)
+        {
+            message = value;
+            messageIsHint = false;
+            messageIsEvent = true;
+            footerRightScroll = Vector2.zero;
+        }
+
+        struct FooterMessages
+        {
+            public string firstLabel, firstText, secondLabel, secondText;
+        }
+
+        FooterMessages ComposeFooterMessages()
+        {
+            var result = new FooterMessages();
+            if (!messageIsHint && !string.IsNullOrEmpty(message))
+            {
+                result.firstLabel = messageIsEvent ? "できごと" : "操作結果";
+                result.firstText = message;
+            }
+
+            string notice = town.Notice;
+            if (!string.IsNullOrEmpty(notice) && !notice.StartsWith("まちの会計：", StringComparison.Ordinal) && (messageIsHint || notice != message))
+            {
+                string label = notice.StartsWith("ようこそ", StringComparison.Ordinal) || notice.StartsWith("空き地と建設費", StringComparison.Ordinal) ? "ヒント" : "できごと";
+                if (result.firstText == null)
+                {
+                    result.firstLabel = label;
+                    result.firstText = notice;
+                }
+                else
+                {
+                    result.secondLabel = label;
+                    result.secondText = notice;
+                }
+            }
+
+            return result;
+        }
+
+        struct FooterAreas
+        {
+            public Rect leftBody, rightBody, buttons;
+        }
+
+        FooterAreas FooterRects(Rect panel, bool hasActions)
+        {
+            float x = panel.x + 18, gap = 24, column = (panel.width - 36 - gap) / 2;
+            float bodyY = panel.y + 42, bodyBottom = panel.yMax - (hasActions ? 68 : 12);
+            return new FooterAreas{leftBody = new Rect(x, bodyY, column, bodyBottom - bodyY), rightBody = new Rect(x + column + gap, bodyY, column, bodyBottom - bodyY), buttons = new Rect(x, panel.yMax - 58, panel.width - 36, hasActions ? 44 : 0)};
+        }
+
+        string CompactAmount(float amount)
+        {
+            float magnitude = Mathf.Abs(amount);
+            if (magnitude >= 100000000)
+                return (amount / 100000000).ToString("0.#") + "億";
+            if (magnitude >= 10000)
+                return (amount / 10000).ToString("0.#") + "万";
+            return amount.ToString("0");
+        }
+
+        void HeaderAmount(float x, float y, float width, string prefix, float amount, GUIStyle style, int minimumSize)
+        {
+            int originalSize = style.fontSize;
+            string value = prefix + amount.ToString("0");
+            if (style.CalcSize(new GUIContent(value)).x > width)
+                value = prefix + CompactAmount(amount);
+            while (style.fontSize > minimumSize && style.CalcSize(new GUIContent(value)).x > width)
+                style.fontSize--;
+            GUI.Label(new Rect(x, y, width, originalSize + 10), value, style);
+            style.fontSize = originalSize;
         }
 
         bool RenameButton(Rect r, TownBird bird)
@@ -708,8 +809,9 @@ namespace PigeonSandbox
             Panel(new Rect(l.center.x, l.center.y + l.center.height, l.center.width, l.bottom.y - (l.center.y + l.center.height)), paper);
             float titleBottom = FlowLabel(24, 10, 310, "鳩市長の街づくり", title);
             FlowLabel(24, titleBottom, 310, "鳩と人が暮らす駅前広場", small);
-            float moneyBottom = FlowLabel(355, 14, 245, "街の予算  ¥" + town.Money.ToString("0"), heading);
-            FlowLabel(355, moneyBottom, 245, "今期収入 ¥" + town.Income.ToString("0") + "  維持費 ¥" + town.Upkeep.ToString("0") + " / 20秒", small);
+            HeaderAmount(355, 14, 245, "街の予算 ¥", town.Money, budgetLine, 16);
+            HeaderAmount(355, 51, 245, "20秒ごと 収入 ¥", town.Income, budgetDetail, 12);
+            HeaderAmount(355, 76, 245, "維持費 ¥", town.Upkeep, budgetDetail, 12);
             Meter(615, 23, 140, "鳩の幸福", town.PigeonHappiness);
             Meter(785, 23, 140, "人の満足", town.HumanSatisfaction);
             float residentX = Mathf.Min(965, w - 470);
@@ -775,7 +877,7 @@ namespace PigeonSandbox
                 else
                     ResetCamera();
                 world.Sync(town, paused);
-                message = town.Notice;
+                ShowFeedback(town.Notice);
                 Save(false);
             }
 
@@ -932,7 +1034,7 @@ namespace PigeonSandbox
             {
                 if (draw && Button(new Rect(0, y, width, 50), town.FestivalDue ? "催しを開く" : "DAY " + town.NextFestivalDay + "まで待つ", false, town.FestivalDue && venueReady) && town.StartFestival())
                 {
-                    message = town.Notice;
+                    ShowFeedback(town.Notice);
                     Save(false);
                 }
 
@@ -969,7 +1071,7 @@ namespace PigeonSandbox
                 y = FlowLabel(0, y, width, "期限も失敗のペナルティもありません。", small, draw) + 8;
                 if (draw && Button(new Rect(0, y, width, 44), "準備に戻る") && town.CancelFestival())
                 {
-                    message = town.Notice;
+                    ShowFeedback(town.Notice);
                     Save(false);
                 }
 
@@ -1229,33 +1331,78 @@ namespace PigeonSandbox
             return texture;
         }
 
+        float FooterActionContent(float width, Facility facility, bool draw)
+        {
+            float y = 0;
+            bool managing = facility != null && tool != Tool.Build;
+            string titleText = managing ? TownSimulation.NameOf(facility.Kind) + " Lv." + facility.Level + " / " + facility.X + ", " + facility.Z : tool == Tool.Build ? TownSimulation.NameOf(building) + "を建てる" : "街を観察";
+            y = FlowLabel(0, y, width, titleText, heading, draw);
+            string instruction = managing ? tool == Tool.Move ? "空き地をクリックして移設。費用はかかりません。" : Tips[(int)facility.Kind] : tool == Tool.Build ? "空き地をクリックして建設。" : "施設をクリックして管理。鳩は図鑑から追いかけられます。";
+            y = FlowLabel(0, y, width, instruction, small, draw);
+            string currentTip = managing ? Tips[(int)facility.Kind] : tool == Tool.Build ? Tips[(int)building] : null;
+            if (!managing && tool == Tool.Build)
+                y = FlowLabel(0, y, width, currentTip, small, draw);
+            if (messageIsHint && !string.IsNullOrEmpty(message) && message != currentTip && message != instruction && message != town.Notice)
+                y = FlowLabel(0, y + 2, width, "ヒント：" + message, small, draw);
+            return y + 4;
+        }
+
+        float FooterMessageContent(float width, FooterMessages contents, bool draw)
+        {
+            if (contents.firstText == null)
+                return FlowLabel(0, 0, width, "街のできごとがここに届きます。", small, draw) + 4;
+            float y = FlowLabel(0, 0, width, contents.firstLabel, statusLabel, draw);
+            y = FlowLabel(0, y, width, contents.firstText, small, draw);
+            if (contents.secondText != null)
+            {
+                y = FlowLabel(0, y + 4, width, contents.secondLabel, statusLabel, draw);
+                y = FlowLabel(0, y, width, contents.secondText, small, draw);
+            }
+
+            return y + 4;
+        }
+
         void BottomPanel(UiLayout l)
         {
             Rect r = l.bottom;
             float x = r.x + 18, width = r.width - 36;
-            var f = town.Facilities.Find(a => a.Id == selected);
-            if (f != null && tool != Tool.Build)
+            var facility = town.Facilities.Find(a => a.Id == selected);
+            bool managing = facility != null && tool != Tool.Build;
+            var areas = FooterRects(r, managing);
+            Label(areas.leftBody.x, r.y + 10, areas.leftBody.width, 24, managing ? "選択中の施設" : "いまの操作", statusLabel);
+            Label(areas.rightBody.x, r.y + 10, areas.rightBody.width, 24, "街のお知らせ", statusLabel);
+            Panel(new Rect(areas.leftBody.xMax + 11, r.y + 12, 1, areas.leftBody.yMax - r.y - 12), new Color(.82f, .84f, .76f));
+            float leftWidth = areas.leftBody.width - 16;
+            float leftHeight = FooterActionContent(leftWidth, facility, false);
+            footerLeftScroll = GUI.BeginScrollView(areas.leftBody, footerLeftScroll, new Rect(0, 0, leftWidth, Mathf.Max(areas.leftBody.height, leftHeight)), false, false);
+            FooterActionContent(leftWidth, facility, true);
+            GUI.EndScrollView();
+            if (lastFooterNotice != town.Notice)
             {
-                float y = FlowLabel(x, r.y + 10, width, TownSimulation.NameOf(f.Kind) + " Lv." + f.Level + " / " + f.X + ", " + f.Z, heading);
-                FlowLabel(x, y, width, tool == Tool.Move ? "空き地をクリックして移設。費用はかかりません。" : Tips[(int)f.Kind], small);
-                float by = r.yMax - 58;
-                if (Button(new Rect(x, by, 110, 44), "移設 ¥0", tool == Tool.Move))
-                    tool = Tool.Move;
-                int cost = TownSimulation.Cost(f.Kind) * f.Level / 2;
-                if (Button(new Rect(x + 120, by, 132, 44), f.Level >= 3 ? "改良済み" : "改良 ¥" + cost, false, f.Level < 3 && town.Money >= cost))
-                    town.Upgrade(f.Id);
-                if (Button(new Rect(x + width - 150, by, 150, 44), "撤去 / 70%返金"))
-                {
-                    town.Remove(f.Id);
-                    selected = -1;
-                    tool = Tool.Inspect;
-                }
+                lastFooterNotice = town.Notice;
+                if (!string.IsNullOrEmpty(lastFooterNotice) && !lastFooterNotice.StartsWith("まちの会計：", StringComparison.Ordinal))
+                    footerRightScroll = Vector2.zero;
             }
-            else
+
+            var contents = ComposeFooterMessages();
+            float rightWidth = areas.rightBody.width - 16;
+            float rightHeight = FooterMessageContent(rightWidth, contents, false);
+            footerRightScroll = GUI.BeginScrollView(areas.rightBody, footerRightScroll, new Rect(0, 0, rightWidth, Mathf.Max(areas.rightBody.height, rightHeight)), false, false);
+            FooterMessageContent(rightWidth, contents, true);
+            GUI.EndScrollView();
+            if (!managing)
+                return;
+            float by = areas.buttons.y;
+            if (Button(new Rect(x, by, 110, 44), "移設 ¥0", tool == Tool.Move))
+                tool = Tool.Move;
+            int cost = TownSimulation.Cost(facility.Kind) * facility.Level / 2;
+            if (Button(new Rect(x + 120, by, 132, 44), facility.Level >= 3 ? "改良済み" : "改良 ¥" + cost, false, facility.Level < 3 && town.Money >= cost))
+                town.Upgrade(facility.Id);
+            if (Button(new Rect(x + width - 150, by, 150, 44), "撤去 / 70%返金"))
             {
-                float y = FlowLabel(x, r.y + 10, width, tool == Tool.Build ? TownSimulation.NameOf(building) + "を建てる" : "市長の観察ノート", heading);
-                y = FlowLabel(x, y, width, message, small);
-                FlowLabel(x, y, width, town.Notice, small);
+                town.Remove(facility.Id);
+                selected = -1;
+                tool = Tool.Inspect;
             }
         }
     }

@@ -61,6 +61,7 @@ namespace PigeonSandbox.Editor
             FriendshipChecks.Verify();
             DaylightChecks.Verify();
             WorldSyncChecks.Verify();
+            StatusPanelChecks.Verify();
             FontChecks.Verify();
             Debug.Log("PIGEON VERIFICATION PASSED: build, economy, relocation, policy, determinism, benchmark town, save JSON, daylight, world sync, font");
         }
