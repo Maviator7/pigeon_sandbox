@@ -39,7 +39,6 @@ namespace PigeonSandbox.Editor
             Debug.Log("STATUS PANEL PASS: " + message);
         }
 
-        static bool Contains(object contents, string value) => Read<string>(contents, "firstText") == value || Read<string>(contents, "secondText") == value;
         [MenuItem("Pigeon Sandbox/Verify status panel")]
         public static void Verify()
         {
@@ -50,36 +49,46 @@ namespace PigeonSandbox.Editor
                 var town = new TownSimulation(9);
                 Set(app, "town", town);
                 Call(app, "SelectBuilding", FacilityKind.ClockTower);
-                town.Notice = "まちの会計：収入 47 / 維持費 88.0";
-                object contents = Call(app, "ComposeFooterMessages");
-                Check(!Contains(contents, "観光と目立ちたがりの鳩のための名所。静かな住宅からは距離を。") && Read<string>(contents, "firstText") == null, "selected facility tip and accounting stay out of news");
-                town.Notice = "新しい鳩が引っ越してきました！";
-                contents = Call(app, "ComposeFooterMessages");
-                Check(Contains(contents, town.Notice) && Read<string>(contents, "firstLabel") == "できごと", "pigeon arrival remains visible");
-                town.Notice = "空き地と建設費を確認しよう。";
-                contents = Call(app, "ComposeFooterMessages");
-                Check(Contains(contents, town.Notice) && Read<string>(contents, "firstLabel") == "ヒント", "failed-build notice is identified as guidance");
-                Set(app, "message", "水辺の午後の絵はがきが届きました！");
-                Set(app, "messageIsHint", false);
-                town.Notice = "白い鳩『しらたま』がやってきました！";
-                contents = Call(app, "ComposeFooterMessages");
-                Check(Contains(contents, "水辺の午後の絵はがきが届きました！") && Contains(contents, town.Notice), "feedback and distinct town event both remain visible");
-                town.Notice = "水辺の午後の絵はがきが届きました！";
-                contents = Call(app, "ComposeFooterMessages");
-                Check(Read<string>(contents, "secondText") == null, "matching feedback and event are shown once");
+                int originalUnread = (int)typeof(SandboxApp).GetField("unreadNotices", Private).GetValue(app);
+                Call(app, "ShowFeedback", "新しい鳩が引っ越してきました！");
+                Check((string)typeof(SandboxApp).GetField("toastText", Private).GetValue(app) == "新しい鳩が引っ越してきました！", "town feedback becomes a toast");
+                Call(app, "ShowFeedback", "まちの会計：収入 47 / 維持費 88.0");
+                Check((string)typeof(SandboxApp).GetField("toastText", Private).GetValue(app) == "新しい鳩が引っ越してきました！", "accounting does not replace a useful toast");
                 Call(app, "ShowEvent", "水辺の午後の絵はがきが届きました！");
-                contents = Call(app, "ComposeFooterMessages");
-                Check(Read<string>(contents, "firstLabel") == "できごと", "postcard delivery is labeled as a town event");
-                object layout = Call(app, "FooterRects", new Rect(300, 700, 840, 192), true);
-                var left = Read<Rect>(layout, "leftBody");
-                var right = Read<Rect>(layout, "rightBody");
-                var buttons = Read<Rect>(layout, "buttons");
-                Check(left.xMax < right.xMin && left.yMax < buttons.yMin && right.yMax < buttons.yMin, "two notice columns leave the management buttons clear");
-                Check(left.yMin >= 700 && right.yMin >= 700 && buttons.yMax <= 892, "footer contents remain inside the fixed panel");
+                Check((string)typeof(SandboxApp).GetField("toastText", Private).GetValue(app) == "水辺の午後の絵はがきが届きました！", "postcards remain visible as a toast");
+                Check((int)typeof(SandboxApp).GetField("unreadNotices", Private).GetValue(app) == originalUnread + 2, "new announcements are counted once");
                 string large = (string)Call(app, "CompactAmount", 12345678f);
                 Check(large.Contains("万") || large.Contains("億"), "large amounts have a compact readable unit");
                 string extreme = (string)Call(app, "CompactAmount", float.MaxValue);
                 Check(extreme.Length < 16, "extreme finite budget values stay bounded");
+                object mapLayout = Call(app, "Layout", 1440f, 900f);
+                var map = Read<Rect>(mapLayout, "center");
+                Check(map.width * map.height >= 1440f * 900f * .8f, "the town occupies at least eighty percent of a desktop window");
+                Check(!(bool)Call(app, "UiBlocksMap", new Vector2(720, 450), 1440f, 900f), "uncovered town remains interactive");
+                Check((bool)Call(app, "UiBlocksMap", new Vector2(720, 850), 1440f, 900f), "bottom toolbar blocks construction clicks");
+                Check((bool)Call(app, "UiBlocksMap", new Vector2(1380, 118), 1440f, 900f), "quick actions block town clicks");
+                foreach (FacilityKind kind in Enum.GetValues(typeof(FacilityKind)))
+                    Check((bool)Call(app, "FacilityInCategory", kind, 0), "build catalog includes " + kind);
+                Check((bool)Call(app, "FacilityInCategory", FacilityKind.Cafe, 1), "cafe remains available under food");
+                Check((bool)Call(app, "FacilityInCategory", FacilityKind.Park, 3), "park remains available under nature");
+                var overlayField = typeof(SandboxApp).GetField("overlay", Private);
+                object notices = Enum.Parse(overlayField.FieldType, "Notices");
+                Call(app, "OpenOverlay", notices);
+                Check((int)typeof(SandboxApp).GetField("unreadNotices", Private).GetValue(app) == 0, "opening announcements marks them read");
+                Call(app, "CloseOverlay");
+                object wishes = Enum.Parse(overlayField.FieldType, "Wishes");
+                Call(app, "OpenOverlay", wishes);
+                Check((bool)Call(app, "UiBlocksMap", new Vector2(720, 450), 1440f, 900f), "an open drawer blocks map construction");
+                Call(app, "CloseOverlay");
+                Check(!(bool)Call(app, "UiBlocksMap", new Vector2(720, 450), 1440f, 900f), "closing a drawer restores map interaction");
+                foreach (float width in new[] {1440f, 1600f, 1920f})
+                {
+                    Rect dock = (Rect)Call(app, "ToolDockRect", width, 900f);
+                    Rect actions = (Rect)Call(app, "QuickActionsRect", width, 900f);
+                    Rect menu = (Rect)Call(app, "MenuButtonRect", width, 900f);
+                    Check(dock.x >= 0 && dock.xMax <= width && actions.x >= 0 && actions.xMax <= width && menu.x >= 0 && menu.xMax <= width,
+                        "desktop controls stay inside a " + width + "px window");
+                }
                 Debug.Log("PIGEON STATUS PANEL VERIFICATION PASSED");
             }
             finally

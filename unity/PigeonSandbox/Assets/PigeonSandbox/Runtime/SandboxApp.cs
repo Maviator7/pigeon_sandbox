@@ -4,19 +4,19 @@ using UnityEngine;
 
 namespace PigeonSandbox
 {
-    public sealed class SandboxApp : MonoBehaviour
+    public sealed partial class SandboxApp : MonoBehaviour
     {
         // Set by the generated Benchmark scene: a full, unsaved town with the performance overlay and runner.
         [SerializeField]
         bool benchmark;
-        // -benchmark-no-ui measures the world alone; the IMGUI panels are due to be rebuilt.
+        // -benchmark-no-ui measures the world without the IMGUI overlay.
         bool hideUi;
         TownSimulation town;
         TownWorld world;
         Camera view;
         Font font;
         Light sun;
-        GUIStyle title, heading, text, small, button, marker, nameInput, statusLabel, budgetLine, budgetDetail;
+        GUIStyle title, heading, text, small, button, primaryButton, disabledButton, marker, toastStyle, nameInput, statusLabel, budgetLine;
         float yaw = 35, pitch = 48, zoom = 14, saveClock;
         int speed = 1, selected = -1, tab;
         bool paused;
@@ -33,9 +33,22 @@ namespace PigeonSandbox
             Move
         }
 
-        Tool tool = Tool.Build;
-        Vector2 pointerStart, scroll, lastPointer, buildScroll, footerLeftScroll, footerRightScroll;
-        string lastFooterNotice;
+        enum OverlayPanel
+        {
+            None,
+            Build,
+            Wishes,
+            Notices,
+            Codex,
+            Policies,
+            Festivals,
+            Menu
+        }
+
+        Tool tool = Tool.Inspect;
+        OverlayPanel overlay;
+        int catalogCategory;
+        Vector2 pointerStart, scroll, lastPointer;
         Vector3 cameraFocus = new Vector3(0, .3f, 0);
         int followedBird = -1;
         int editingBird = -1;
@@ -44,9 +57,6 @@ namespace PigeonSandbox
         IMECompositionMode previousImeMode;
         float targetZoom = 14;
         bool pointerInTown, dragged, multiTouch;
-        string message = "広場のそばにベーカリーを建ててみましょう。";
-        bool messageIsHint = true;
-        bool messageIsEvent;
         float Scale => Mathf.Min(Screen.width / 1440f, Screen.height / 900f);
         float Width => Screen.width / Scale;
         float Height => Screen.height / Scale;
@@ -55,17 +65,14 @@ namespace PigeonSandbox
         static readonly string[] Tips = {"広場から2マス以内で混雑を軽減。噴水を添えると鳩の生活圏に。", "パン屋の2マス以内で食事と水浴びを楽しめる場所に。", "木や噴水が近く、店舗から離れた場所なら静かな寝床に。", "住宅のそばで静かな緑地に。清掃の負担もやわらげます。", "パン屋に近づけると混雑をやわらげ、人と鳩の居場所を確保。", "観光と目立ちたがりの鳩のための名所。静かな住宅からは距離を。", "パン屋の2マス以内で売上と食料供給がアップ。テラスで人と鳩がひと休み。", "住宅の2マス以内で静かな居場所に。混雑をやわらげ、日向ぼっこや羽繕いを楽しめます。"};
         struct UiLayout
         {
-            public float gap, headerH, bottomH, leftW, rightW;
-            public Rect left, right, center, bottom;
+            public float headerH;
+            public Rect center;
         }
 
         UiLayout Layout(float w, float h)
         {
-            float gap = Mathf.Clamp(w * .012f, 14, 20), headerH = Mathf.Clamp(h * .12f, 104, 116), bottomH = 192;
-            float leftW = Mathf.Clamp(w * .18f, 248, 276), rightW = Mathf.Clamp(w * .205f, 286, 320);
-            float centerX = leftW + gap, centerY = headerH + gap;
-            float centerW = Mathf.Max(480, w - leftW - rightW - gap * 2), centerH = Mathf.Max(260, h - headerH - bottomH - gap * 2);
-            return new UiLayout{gap = gap, headerH = headerH, bottomH = bottomH, leftW = leftW, rightW = rightW, left = new Rect(0, headerH, leftW, h - headerH), right = new Rect(w - rightW, headerH, rightW, h - headerH), center = new Rect(centerX, centerY, centerW, centerH), bottom = new Rect(centerX, h - bottomH, centerW, bottomH)};
+            float headerH = Mathf.Clamp(h * .088f, 74, 82);
+            return new UiLayout{headerH = headerH, center = new Rect(0, headerH, w, h - headerH)};
         }
 
         void Start()
@@ -169,18 +176,47 @@ namespace PigeonSandbox
         Rect CameraToolbar()
         {
             var r = Layout(Width, Height).center;
-            return new Rect(r.x + 10, r.y + 10, r.width - 20, 48);
+            float width = town != null && town.WaterfrontUnlocked ? 328 : 202;
+            if (followedBird >= 0)
+                width += 104;
+            return new Rect(r.x + 10, r.y + 10, width, 48);
+        }
+
+        Rect QuickActionsRect(float w, float h) => new Rect(w - 362, Layout(w, h).headerH + 20, 346, 48);
+        Rect ToolDockRect(float w, float h) => new Rect((w - 400) / 2, h - 76, 400, 60);
+        Rect MenuButtonRect(float w, float h) => new Rect(w - 72, h - 74, 56, 56);
+        Rect SelectionRect(float w, float h) => selected >= 0 && tool != Tool.Build ? new Rect((w - 720) / 2, h - 210, 720, 118) : new Rect((w - 650) / 2, h - 184, 650, 92);
+
+        bool UiBlocksMap(Vector2 point, float w, float h)
+        {
+            if (point.y < Layout(w, h).headerH || overlay != OverlayPanel.None)
+                return true;
+            if (CameraToolbar().Contains(point) || QuickActionsRect(w, h).Contains(point) || ToolDockRect(w, h).Contains(point) || MenuButtonRect(w, h).Contains(point))
+                return true;
+            return (tool == Tool.Build || selected >= 0) && SelectionRect(w, h).Contains(point);
+        }
+
+        bool FacilityInCategory(FacilityKind kind, int category)
+        {
+            if (category == 0)
+                return true;
+            if (category == 1)
+                return kind == FacilityKind.Bakery || kind == FacilityKind.Cafe;
+            if (category == 2)
+                return kind == FacilityKind.Housing || kind == FacilityKind.ClockTower;
+            return kind == FacilityKind.Fountain || kind == FacilityKind.Tree || kind == FacilityKind.Plaza || kind == FacilityKind.Park;
         }
 
         bool InTown(Vector2 point)
         {
             var p = point / Scale;
             p.y = Height - p.y;
-            return Layout(Width, Height).center.Contains(p) && !CameraToolbar().Contains(p);
+            return Layout(Width, Height).center.Contains(p) && !UiBlocksMap(p, Width, Height);
         }
 
         void FocusBird(int id)
         {
+            CloseOverlay();
             followedBird = id;
             targetZoom = 4;
             tool = Tool.Inspect;
@@ -194,11 +230,27 @@ namespace PigeonSandbox
 
         void SelectBuilding(FacilityKind kind)
         {
+            CloseOverlay();
             StopFollowing();
             building = kind;
             tool = Tool.Build;
             selected = -1;
             ShowGuidance(Tips[(int)kind]);
+        }
+
+        void OpenOverlay(OverlayPanel panel)
+        {
+            CancelRename();
+            overlay = panel;
+            scroll = Vector2.zero;
+            if (panel == OverlayPanel.Notices)
+                unreadNotices = 0;
+        }
+
+        void CloseOverlay()
+        {
+            CancelRename();
+            overlay = OverlayPanel.None;
         }
 
         void BeginRename(TownBird bird)
@@ -403,22 +455,17 @@ namespace PigeonSandbox
                 targetZoom = Mathf.Max(3, targetZoom - 2);
             if (Button(new Rect(x + 50, y, 44, 44), "−"))
                 targetZoom = Mathf.Min(32, targetZoom + 2);
-            if (Button(new Rect(x + 100, y, 96, 44), "街全体"))
+            if (Button(new Rect(x + 100, y, 94, 44), "全体"))
                 ResetCamera();
             if (town.WaterfrontUnlocked)
             {
-                if (Button(new Rect(x + 202, y, 62, 44), "駅前"))
+                if (Button(new Rect(x + 200, y, 60, 44), "駅前"))
                     FocusDistrict(false);
-                if (Button(new Rect(x + 270, y, 62, 44), "水辺"))
+                if (Button(new Rect(x + 266, y, 60, 44), "水辺"))
                     FocusDistrict(true);
             }
 
             var bird = town.Birds.Find(b => b.Id == followedBird);
-            string caption = bird == null ? "ドラッグで移動" : bird.Name + "を追従中";
-            float captionX = town.WaterfrontUnlocked ? x + 344 : x + 208;
-            float captionWidth = Mathf.Max(0, r.xMax - captionX - (bird != null ? 108 : 8));
-            if (captionWidth >= 90)
-                GUI.Label(new Rect(captionX, y + 9, captionWidth, 34), caption, small);
             if (bird != null && Button(new Rect(r.xMax - 100, y, 96, 44), "追従解除"))
                 StopFollowing();
         }
@@ -483,15 +530,17 @@ namespace PigeonSandbox
                 if (town.Build(building, x, z))
                 {
                     selected = town.At(x, z).Id;
+                    tool = Tool.Inspect;
+                    ShowFeedback(TownSimulation.NameOf(building) + "を建設しました。");
                     ShowGuidance(Tips[(int)building]);
                 }
                 else
-                    ShowGuidance(town.Notice);
+                    ShowFeedback(town.Notice);
             }
             else
             {
                 selected = -1;
-                ShowGuidance("左の施設を選んで、空き地をクリックすると建設できます。");
+                ShowGuidance("下の建設から施設を選び、空き地をクリックすると建設できます。");
             }
         }
 
@@ -503,9 +552,14 @@ namespace PigeonSandbox
             {
                 if (Input.GetKeyDown(KeyCode.Escape))
                 {
-                    StopFollowing();
-                    tool = Tool.Inspect;
-                    selected = -1;
+                    if (overlay != OverlayPanel.None)
+                        CloseOverlay();
+                    else
+                    {
+                        StopFollowing();
+                        tool = Tool.Inspect;
+                        selected = -1;
+                    }
                 }
 
                 CameraInput();
@@ -522,6 +576,11 @@ namespace PigeonSandbox
             if (!paused)
                 for (int i = 0; i < speed; i++)
                     town.Tick(Mathf.Min(UnityEngine.Time.deltaTime, .1f));
+            if (town.Notice != lastRecordedTownNotice)
+            {
+                lastRecordedTownNotice = town.Notice;
+                ShowToast(town.Notice);
+            }
             if (town.Season != displayedSeason)
             {
                 displayedSeason = town.Season;
@@ -634,19 +693,25 @@ namespace PigeonSandbox
             marker = new GUIStyle(small)
             {alignment = TextAnchor.MiddleCenter, wordWrap = false};
             marker.normal.textColor = Color.white;
+            toastStyle = new GUIStyle(marker)
+            {fontSize = 16, wordWrap = true};
             heading = new GUIStyle(text)
             {fontSize = 22, fontStyle = FontStyle.Bold};
             heading.normal.textColor = ink;
             title = new GUIStyle(heading)
-            {fontSize = 30};
+            {fontSize = 23};
             button = new GUIStyle(text)
             {alignment = TextAnchor.MiddleCenter, fontSize = 15, fontStyle = FontStyle.Bold, wordWrap = true, padding = new RectOffset(8, 8, 6, 6)};
+            ConfigureButton(button, new Color(.89f, .89f, .82f), new Color(.94f, .94f, .87f), new Color(.83f, .85f, .77f), ink);
+            primaryButton = new GUIStyle(button);
+            ConfigureButton(primaryButton, green, new Color(.32f, .47f, .38f), new Color(.22f, .36f, .28f), Color.white);
+            disabledButton = new GUIStyle(button);
+            ConfigureButton(disabledButton, new Color(.92f, .92f, .87f), new Color(.92f, .92f, .87f), new Color(.92f, .92f, .87f), new Color(.6f, .62f, .56f));
+            StyleScrollbars();
             statusLabel = new GUIStyle(small)
             {fontSize = 14, fontStyle = FontStyle.Bold, wordWrap = false};
             statusLabel.normal.textColor = green;
             budgetLine = new GUIStyle(heading)
-            {wordWrap = false};
-            budgetDetail = new GUIStyle(small)
             {wordWrap = false};
         }
 
@@ -674,80 +739,79 @@ namespace PigeonSandbox
 
         bool Button(Rect r, string value, bool active = false, bool enabled = true)
         {
-            Panel(r, active ? green : enabled ? new Color(.89f, .89f, .82f) : new Color(.92f, .92f, .87f));
-            button.normal.textColor = active ? Color.white : enabled ? ink : new Color(.6f, .62f, .56f);
-            bool hit = GUI.Button(r, value, button);
-            button.normal.textColor = ink;
-            return hit && enabled;
+            return GUI.Button(r, value, enabled ? active ? primaryButton : button : disabledButton) && enabled;
+        }
+
+        bool CloseButton(Rect r)
+        {
+            return Button(r, "閉じる");
+        }
+
+        Texture2D RoundedTexture(Color color, int radius = 8)
+        {
+            const int size = 24;
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            texture.hideFlags = HideFlags.DontSave;
+            texture.filterMode = FilterMode.Bilinear;
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = Mathf.Max(radius - x - .5f, 0, x - (size - radius) + .5f);
+                    float dy = Mathf.Max(radius - y - .5f, 0, y - (size - radius) + .5f);
+                    Color pixel = color;
+                    pixel.a *= Mathf.Clamp01(radius + .5f - Mathf.Sqrt(dx * dx + dy * dy));
+                    texture.SetPixel(x, y, pixel);
+                }
+            texture.Apply();
+            return texture;
+        }
+
+        void ConfigureButton(GUIStyle style, Color normal, Color hover, Color pressed, Color foreground)
+        {
+            style.border = new RectOffset(9, 9, 9, 9);
+            style.normal.background = RoundedTexture(normal);
+            style.hover.background = RoundedTexture(hover);
+            style.active.background = RoundedTexture(pressed);
+            style.focused.background = style.normal.background;
+            style.normal.textColor = foreground;
+            style.hover.textColor = foreground;
+            style.active.textColor = foreground;
+            style.focused.textColor = foreground;
+        }
+
+        void StyleScrollbars()
+        {
+            var skin = GUI.skin;
+            var transparent = RoundedTexture(Color.clear, 4);
+            var thumb = RoundedTexture(new Color(.2f, .37f, .28f, .42f), 4);
+            skin.verticalScrollbar.fixedWidth = 7;
+            skin.verticalScrollbar.normal.background = transparent;
+            skin.verticalScrollbar.hover.background = transparent;
+            skin.verticalScrollbar.active.background = transparent;
+            skin.verticalScrollbarThumb.fixedWidth = 7;
+            skin.verticalScrollbarThumb.border = new RectOffset(5, 5, 5, 5);
+            skin.verticalScrollbarThumb.normal.background = thumb;
+            skin.verticalScrollbarThumb.hover.background = thumb;
+            skin.verticalScrollbarThumb.active.background = thumb;
+            skin.verticalScrollbarUpButton.fixedHeight = 0;
+            skin.verticalScrollbarDownButton.fixedHeight = 0;
+            skin.verticalScrollbarUpButton.normal.background = transparent;
+            skin.verticalScrollbarDownButton.normal.background = transparent;
         }
 
         void ShowGuidance(string value)
         {
-            message = value;
-            messageIsHint = true;
-            messageIsEvent = false;
-            footerLeftScroll = Vector2.zero;
+            ShowToast(value);
         }
 
         void ShowFeedback(string value)
         {
-            message = value;
-            messageIsHint = false;
-            messageIsEvent = false;
-            footerRightScroll = Vector2.zero;
+            ShowToast(value);
         }
 
         void ShowEvent(string value)
         {
-            message = value;
-            messageIsHint = false;
-            messageIsEvent = true;
-            footerRightScroll = Vector2.zero;
-        }
-
-        struct FooterMessages
-        {
-            public string firstLabel, firstText, secondLabel, secondText;
-        }
-
-        FooterMessages ComposeFooterMessages()
-        {
-            var result = new FooterMessages();
-            if (!messageIsHint && !string.IsNullOrEmpty(message))
-            {
-                result.firstLabel = messageIsEvent ? "できごと" : "操作結果";
-                result.firstText = message;
-            }
-
-            string notice = town.Notice;
-            if (!string.IsNullOrEmpty(notice) && !notice.StartsWith("まちの会計：", StringComparison.Ordinal) && (messageIsHint || notice != message))
-            {
-                string label = notice.StartsWith("ようこそ", StringComparison.Ordinal) || notice.StartsWith("空き地と建設費", StringComparison.Ordinal) ? "ヒント" : "できごと";
-                if (result.firstText == null)
-                {
-                    result.firstLabel = label;
-                    result.firstText = notice;
-                }
-                else
-                {
-                    result.secondLabel = label;
-                    result.secondText = notice;
-                }
-            }
-
-            return result;
-        }
-
-        struct FooterAreas
-        {
-            public Rect leftBody, rightBody, buttons;
-        }
-
-        FooterAreas FooterRects(Rect panel, bool hasActions)
-        {
-            float x = panel.x + 18, gap = 24, column = (panel.width - 36 - gap) / 2;
-            float bodyY = panel.y + 42, bodyBottom = panel.yMax - (hasActions ? 68 : 12);
-            return new FooterAreas{leftBody = new Rect(x, bodyY, column, bodyBottom - bodyY), rightBody = new Rect(x + column + gap, bodyY, column, bodyBottom - bodyY), buttons = new Rect(x, panel.yMax - 58, panel.width - 36, hasActions ? 44 : 0)};
+            ShowToast(value);
         }
 
         string CompactAmount(float amount)
@@ -779,11 +843,7 @@ namespace PigeonSandbox
         bool RenameButton(Rect r, TownBird bird)
         {
             bool active = editingBird == bird.Id;
-            Panel(r, green);
-            Panel(new Rect(r.x + 1, r.y + 1, r.width - 2, r.height - 2), active ? green : paper);
-            button.normal.textColor = active ? Color.white : green;
-            bool hit = GUI.Button(r, new GUIContent("改名", "「" + bird.Name + "」の名前を変更"), button);
-            button.normal.textColor = ink;
+            bool hit = GUI.Button(r, new GUIContent("改名", "「" + bird.Name + "」の名前を変更"), active ? primaryButton : button);
             return hit && !active;
         }
 
@@ -803,116 +863,7 @@ namespace PigeonSandbox
             float w = Width, h = Height;
             var l = Layout(w, h);
             GUI.matrix = Matrix4x4.Scale(new Vector3(Scale, Scale, 1));
-            Panel(new Rect(0, 0, w, l.headerH), paper);
-            Panel(l.left, paper);
-            Panel(l.right, paper);
-            Panel(l.bottom, paper);
-            Panel(new Rect(l.left.width, l.headerH, l.center.x - l.left.width, h - l.headerH), paper);
-            Panel(new Rect(l.center.x + l.center.width, l.headerH, w - (l.center.x + l.center.width), h - l.headerH), paper);
-            Panel(new Rect(l.center.x, l.headerH, l.center.width, l.center.y - l.headerH), paper);
-            Panel(new Rect(l.center.x, l.center.y + l.center.height, l.center.width, l.bottom.y - (l.center.y + l.center.height)), paper);
-            float titleBottom = FlowLabel(24, 10, 310, "鳩市長の街づくり", title);
-            FlowLabel(24, titleBottom, 310, "鳩と人が暮らす駅前広場", small);
-            HeaderAmount(355, 14, 245, "街の予算 ¥", town.Money, budgetLine, 16);
-            HeaderAmount(355, 51, 245, "20秒ごと 収入 ¥", town.Income, budgetDetail, 12);
-            HeaderAmount(355, 76, 245, "維持費 ¥", town.Upkeep, budgetDetail, 12);
-            Meter(615, 23, 140, "鳩の幸福", town.PigeonHappiness);
-            Meter(785, 23, 140, "人の満足", town.HumanSatisfaction);
-            float residentX = Mathf.Min(965, w - 470);
-            float residentBottom = FlowLabel(residentX, 18, 210, "住民 " + town.Birds.Count + "羽 / 来訪 " + town.Visitors.Count + "人", text);
-            FlowLabel(residentX, residentBottom, 210, "" + town.Year + "年目 " + town.SeasonName + town.SeasonDay + "日 · DAY " + town.Day + " · " + town.TimeOfDayName, small);
-            float speedW = 104, pauseW = 94, controlGap = 10, speedX = w - 24 - speedW, pauseX = speedX - controlGap - pauseW;
-            if (Button(new Rect(pauseX, 25, pauseW, 45), paused ? "再開" : "一時停止", paused))
-                paused = !paused;
-            // Speed is remembered separately so changing it never resumes a paused town.
-            if (Button(new Rect(speedX, 25, speedW, 45), "速度 ×" + speed))
-                speed = speed >= 3 ? 1 : 3;
-            LeftPanel(l);
-            RightPanel(l);
-            BottomPanel(l);
-            FocusMarker();
-            CameraControls();
-            if (seasonToastUntil > UnityEngine.Time.realtimeSinceStartup)
-            {
-                float toastW = 290, toastX = l.center.x + (l.center.width - toastW) / 2;
-                Panel(new Rect(toastX, l.center.y + 14, toastW, 52), paper);
-                FlowLabel(toastX + 12, l.center.y + 23, toastW - 24, town.SeasonName + "がやってきました", heading);
-            }
-        }
-
-        void LeftPanel(UiLayout l)
-        {
-            Rect r = l.left;
-            float x = r.x + 16, w = r.width - 32;
-            float introY = FlowLabel(x, r.y + 18, w, "街をつくる", heading);
-            float introBottom = FlowLabel(x, introY, w, "施設を選んで、中央の街に配置", small);
-            string[] uses = {"食料", "水浴び", "寝床", "休憩", "交流", "観光", "商業・交流", "緑地・休息"};
-            float gridY = introBottom + 12, gap = 8, bw = (w - 20 - gap) / 2, bh = 58;
-            int count = Enum.GetValues(typeof(FacilityKind)).Length;
-            for (int i = 0; i < count; i++)
-            {
-                string caption = TownSimulation.NameOf((FacilityKind)i) + "\n¥" + TownSimulation.Cost((FacilityKind)i) + "\n" + uses[i];
-                bh = Mathf.Max(bh, TextHeight(caption, bw, button));
-            }
-
-            float inspectY = r.yMax - 328;
-            buildScroll = GUI.BeginScrollView(new Rect(x, gridY, w, inspectY - gridY - 12), buildScroll, new Rect(0, 0, w - 20, ((count + 1) / 2) * (bh + gap)), false, true);
-            for (int i = 0; i < count; i++)
-            {
-                var kind = (FacilityKind)i;
-                int col = i % 2, row = i / 2;
-                if (Button(new Rect(col * (bw + gap), row * (bh + gap), bw, bh), TownSimulation.NameOf(kind) + "\n¥" + TownSimulation.Cost(kind) + "\n" + uses[i], tool == Tool.Build && building == kind))
-                    SelectBuilding(kind);
-            }
-
-            GUI.EndScrollView();
-            if (Button(new Rect(x, inspectY, w, 40), "観察 / 施設を選ぶ", tool == Tool.Inspect))
-                tool = Tool.Inspect;
-            FlowLabel(x, inspectY + 52, w, "左クリック：建設・選択\n左ドラッグ：マップ移動\n右ドラッグ：視点回転\nホイール / ＋−：ズーム", small);
-            float expansionY = r.yMax - 166;
-            FlowLabel(x, expansionY, w, town.WaterfrontUnlocked ? "駅前 " + town.MapSize + "×" + town.MapSize + " ＋ 水辺 49マス" : "街の広さ " + town.MapSize + " × " + town.MapSize + "マス", small);
-            string expansion = town.CanExpand ? "土地を広げる ¥" + town.ExpansionCost + "\n＋" + ((town.MapSize + 2) * (town.MapSize + 2) - town.MapSize * town.MapSize) + "マス（外周1マス）" : town.WaterfrontUnlocked ? "水辺地区 開放済み" : "水辺地区を開く ¥" + TownSimulation.WaterfrontCost + "\n＋49マス";
-            bool canAfford = town.CanExpand ? town.Money >= town.ExpansionCost : !town.WaterfrontUnlocked && town.Money >= TownSimulation.WaterfrontCost;
-            if (Button(new Rect(x, r.yMax - 130, w, 62), expansion, false, canAfford) && (town.CanExpand ? town.ExpandTown() : town.UnlockWaterfront()))
-            {
-                CancelRename();
-                if (town.WaterfrontUnlocked)
-                    FocusDistrict(true);
-                else
-                    ResetCamera();
-                world.Sync(town, paused);
-                ShowFeedback(town.Notice);
-                Save(false);
-            }
-
-            if (Button(new Rect(x, r.y + r.height - 58, w, 40), "街を保存"))
-                Save(true);
-        }
-
-        void RightPanel(UiLayout l)
-        {
-            Rect r = l.right;
-            float x = r.x + 16, innerW = r.width - 32;
-            float meterGap = 10, meterW = (innerW - meterGap) / 2;
-            float foodBottom = Meter(x, r.y + 18, meterW, "食料供給", town.FoodSupply);
-            float cleanBottom = Meter(x + meterW + meterGap, r.y + 18, meterW, "清潔さ", town.Cleanliness);
-            float tabsTop = FlowLabel(x, Mathf.Max(foodBottom, cleanBottom) + 8, innerW, "混雑 " + town.Crowding.ToString("0") + " · 木と広場でゆとりを", small);
-            string[] tabs = {"お願い", "鳩図鑑", "条例", town.FestivalDue && !town.FestivalActive ? "催し！" : "催し"};
-            float tabGap = 6, tabW = (innerW - tabGap) / 2, tabY = tabsTop + 8;
-            for (int i = 0; i < tabs.Length; i++)
-                if (Button(new Rect(x + (i % 2) * (tabW + tabGap), tabY + (i / 2) * 44, tabW, 38), tabs[i], tab == i))
-                {
-                    CancelRename();
-                    tab = i;
-                    scroll = Vector2.zero;
-                }
-
-            float scrollY = tabY + 94, scrollH = r.y + r.height - scrollY - 16;
-            float contentW = innerW - GUI.skin.verticalScrollbar.fixedWidth - 12;
-            float content = RightContent(contentW, false);
-            scroll = GUI.BeginScrollView(new Rect(x, scrollY, innerW, scrollH), scroll, new Rect(0, 0, contentW, content), false, true);
-            RightContent(contentW, true);
-            GUI.EndScrollView();
+            DrawMapFirstUi(l, w, h);
         }
 
         float RightContent(float width, bool draw)
@@ -1335,79 +1286,5 @@ namespace PigeonSandbox
             return texture;
         }
 
-        float FooterActionContent(float width, Facility facility, bool draw)
-        {
-            float y = 0;
-            bool managing = facility != null && tool != Tool.Build;
-            string titleText = managing ? TownSimulation.NameOf(facility.Kind) + " Lv." + facility.Level + " / " + facility.X + ", " + facility.Z : tool == Tool.Build ? TownSimulation.NameOf(building) + "を建てる" : "街を観察";
-            y = FlowLabel(0, y, width, titleText, heading, draw);
-            string instruction = managing ? tool == Tool.Move ? "空き地をクリックして移設。費用はかかりません。" : Tips[(int)facility.Kind] : tool == Tool.Build ? "空き地をクリックして建設。" : "施設をクリックして管理。鳩は図鑑から追いかけられます。";
-            y = FlowLabel(0, y, width, instruction, small, draw);
-            string currentTip = managing ? Tips[(int)facility.Kind] : tool == Tool.Build ? Tips[(int)building] : null;
-            if (!managing && tool == Tool.Build)
-                y = FlowLabel(0, y, width, currentTip, small, draw);
-            if (messageIsHint && !string.IsNullOrEmpty(message) && message != currentTip && message != instruction && message != town.Notice)
-                y = FlowLabel(0, y + 2, width, "ヒント：" + message, small, draw);
-            return y + 4;
-        }
-
-        float FooterMessageContent(float width, FooterMessages contents, bool draw)
-        {
-            if (contents.firstText == null)
-                return FlowLabel(0, 0, width, "街のできごとがここに届きます。", small, draw) + 4;
-            float y = FlowLabel(0, 0, width, contents.firstLabel, statusLabel, draw);
-            y = FlowLabel(0, y, width, contents.firstText, small, draw);
-            if (contents.secondText != null)
-            {
-                y = FlowLabel(0, y + 4, width, contents.secondLabel, statusLabel, draw);
-                y = FlowLabel(0, y, width, contents.secondText, small, draw);
-            }
-
-            return y + 4;
-        }
-
-        void BottomPanel(UiLayout l)
-        {
-            Rect r = l.bottom;
-            float x = r.x + 18, width = r.width - 36;
-            var facility = town.Facilities.Find(a => a.Id == selected);
-            bool managing = facility != null && tool != Tool.Build;
-            var areas = FooterRects(r, managing);
-            Label(areas.leftBody.x, r.y + 10, areas.leftBody.width, 24, managing ? "選択中の施設" : "いまの操作", statusLabel);
-            Label(areas.rightBody.x, r.y + 10, areas.rightBody.width, 24, "街のお知らせ", statusLabel);
-            Panel(new Rect(areas.leftBody.xMax + 11, r.y + 12, 1, areas.leftBody.yMax - r.y - 12), new Color(.82f, .84f, .76f));
-            float leftWidth = areas.leftBody.width - 16;
-            float leftHeight = FooterActionContent(leftWidth, facility, false);
-            footerLeftScroll = GUI.BeginScrollView(areas.leftBody, footerLeftScroll, new Rect(0, 0, leftWidth, Mathf.Max(areas.leftBody.height, leftHeight)), false, false);
-            FooterActionContent(leftWidth, facility, true);
-            GUI.EndScrollView();
-            if (lastFooterNotice != town.Notice)
-            {
-                lastFooterNotice = town.Notice;
-                if (!string.IsNullOrEmpty(lastFooterNotice) && !lastFooterNotice.StartsWith("まちの会計：", StringComparison.Ordinal))
-                    footerRightScroll = Vector2.zero;
-            }
-
-            var contents = ComposeFooterMessages();
-            float rightWidth = areas.rightBody.width - 16;
-            float rightHeight = FooterMessageContent(rightWidth, contents, false);
-            footerRightScroll = GUI.BeginScrollView(areas.rightBody, footerRightScroll, new Rect(0, 0, rightWidth, Mathf.Max(areas.rightBody.height, rightHeight)), false, false);
-            FooterMessageContent(rightWidth, contents, true);
-            GUI.EndScrollView();
-            if (!managing)
-                return;
-            float by = areas.buttons.y;
-            if (Button(new Rect(x, by, 110, 44), "移設 ¥0", tool == Tool.Move))
-                tool = Tool.Move;
-            int cost = TownSimulation.Cost(facility.Kind) * facility.Level / 2;
-            if (Button(new Rect(x + 120, by, 132, 44), facility.Level >= 3 ? "改良済み" : "改良 ¥" + cost, false, facility.Level < 3 && town.Money >= cost))
-                town.Upgrade(facility.Id);
-            if (Button(new Rect(x + width - 150, by, 150, 44), "撤去 / 70%返金"))
-            {
-                town.Remove(facility.Id);
-                selected = -1;
-                tool = Tool.Inspect;
-            }
-        }
     }
 }
