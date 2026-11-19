@@ -16,7 +16,8 @@ namespace PigeonSandbox
         Camera view;
         Font font;
         Light sun;
-        GUIStyle title, heading, text, small, button, primaryButton, disabledButton, marker, toastStyle, nameInput, statusLabel, budgetLine;
+        GUIStyle title, heading, text, small, button, primaryButton, disabledButton, dangerButton, commandLabel, commandActiveLabel, marker, toastStyle, nameInput, statusLabel, budgetLine, surfaceStyle;
+        Texture2D roundedMask, circleMask;
         float yaw = 35, pitch = 48, zoom = 14, saveClock;
         int speed = 1, selected = -1, tab;
         bool paused;
@@ -57,6 +58,7 @@ namespace PigeonSandbox
         IMECompositionMode previousImeMode;
         float targetZoom = 14;
         bool pointerInTown, dragged, multiTouch;
+        float overlayOpenedAt;
         float Scale => Mathf.Min(Screen.width / 1440f, Screen.height / 900f);
         float Width => Screen.width / Scale;
         float Height => Screen.height / Scale;
@@ -179,19 +181,23 @@ namespace PigeonSandbox
             float width = town != null && town.WaterfrontUnlocked ? 328 : 202;
             if (followedBird >= 0)
                 width += 104;
-            return new Rect(r.x + 10, r.y + 10, width, 48);
+            return new Rect(CommandRailRect(Width, Height).xMax + 12, r.y + 10, width, 48);
         }
 
         Rect QuickActionsRect(float w, float h) => new Rect(w - 362, Layout(w, h).headerH + 20, 346, 48);
-        Rect ToolDockRect(float w, float h) => new Rect((w - 400) / 2, h - 76, 400, 60);
-        Rect MenuButtonRect(float w, float h) => new Rect(w - 72, h - 74, 56, 56);
-        Rect SelectionRect(float w, float h) => selected >= 0 && tool != Tool.Build ? new Rect((w - 720) / 2, h - 210, 720, 118) : new Rect((w - 650) / 2, h - 184, 650, 92);
+        Rect CommandRailRect(float w, float h)
+        {
+            const float railHeight = 280;
+            float header = Layout(w, h).headerH;
+            return new Rect(10, header + Mathf.Max(12, (h - header - railHeight) / 2), 84, railHeight);
+        }
 
+        Rect SelectionRect(float w, float h) => selected >= 0 && tool != Tool.Build ? new Rect((w - 720) / 2, h - 210, 720, 118) : new Rect((w - 650) / 2, h - 184, 650, 92);
         bool UiBlocksMap(Vector2 point, float w, float h)
         {
             if (point.y < Layout(w, h).headerH || overlay != OverlayPanel.None)
                 return true;
-            if (CameraToolbar().Contains(point) || QuickActionsRect(w, h).Contains(point) || ToolDockRect(w, h).Contains(point) || MenuButtonRect(w, h).Contains(point))
+            if (CameraToolbar().Contains(point) || QuickActionsRect(w, h).Contains(point) || CommandRailRect(w, h).Contains(point))
                 return true;
             return (tool == Tool.Build || selected >= 0) && SelectionRect(w, h).Contains(point);
         }
@@ -242,6 +248,7 @@ namespace PigeonSandbox
         {
             CancelRename();
             overlay = panel;
+            overlayOpenedAt = UnityEngine.Time.unscaledTime;
             scroll = Vector2.zero;
             if (panel == OverlayPanel.Notices)
                 unreadNotices = 0;
@@ -484,7 +491,8 @@ namespace PigeonSandbox
                 return;
             string label = bird.Name + " · " + town.ActivityOf(bird);
             float width = Mathf.Min(map.width - 24, Mathf.Max(140, marker.CalcSize(new GUIContent(label)).x + 24));
-            Rect tag = new Rect(Mathf.Clamp(point.x - width / 2, map.x + 8, map.xMax - width - 8), point.y - 36, width, 30);
+            float leftEdge = Mathf.Max(map.x + 8, CommandRailRect(Width, Height).xMax + 8);
+            Rect tag = new Rect(Mathf.Clamp(point.x - width / 2, leftEdge, map.xMax - width - 8), point.y - 36, width, 30);
             Panel(tag, green);
             GUI.Label(tag, label, marker);
             Panel(new Rect(point.x - 2, point.y - 6, 4, 6), green);
@@ -581,6 +589,7 @@ namespace PigeonSandbox
                 lastRecordedTownNotice = town.Notice;
                 ShowToast(town.Notice);
             }
+
             if (town.Season != displayedSeason)
             {
                 displayedSeason = town.Season;
@@ -702,11 +711,22 @@ namespace PigeonSandbox
             {fontSize = 23};
             button = new GUIStyle(text)
             {alignment = TextAnchor.MiddleCenter, fontSize = 15, fontStyle = FontStyle.Bold, wordWrap = true, padding = new RectOffset(8, 8, 6, 6)};
-            ConfigureButton(button, new Color(.89f, .89f, .82f), new Color(.94f, .94f, .87f), new Color(.83f, .85f, .77f), ink);
+            ConfigureButton(button, new Color(.9f, .89f, .82f), new Color(.97f, .95f, .88f), new Color(.82f, .83f, .75f), ink);
             primaryButton = new GUIStyle(button);
-            ConfigureButton(primaryButton, green, new Color(.32f, .47f, .38f), new Color(.22f, .36f, .28f), Color.white);
+            ConfigureButton(primaryButton, new Color(.25f, .39f, .3f), new Color(.32f, .48f, .37f), new Color(.19f, .31f, .24f), Color.white);
             disabledButton = new GUIStyle(button);
-            ConfigureButton(disabledButton, new Color(.92f, .92f, .87f), new Color(.92f, .92f, .87f), new Color(.92f, .92f, .87f), new Color(.6f, .62f, .56f));
+            ConfigureButton(disabledButton, new Color(.92f, .91f, .86f), new Color(.92f, .91f, .86f), new Color(.87f, .87f, .82f), new Color(.38f, .42f, .38f));
+            dangerButton = new GUIStyle(button);
+            ConfigureButton(dangerButton, new Color(.61f, .31f, .25f), new Color(.69f, .37f, .3f), new Color(.52f, .24f, .2f), Color.white);
+            commandLabel = new GUIStyle(small)
+            {alignment = TextAnchor.MiddleCenter, fontSize = 12, fontStyle = FontStyle.Bold, wordWrap = false};
+            commandLabel.normal.textColor = ink;
+            commandActiveLabel = new GUIStyle(commandLabel);
+            commandActiveLabel.normal.textColor = Color.white;
+            roundedMask = RoundedTexture(Color.white, 9);
+            circleMask = RoundedTexture(Color.white, 12);
+            surfaceStyle = new GUIStyle{border = new RectOffset(9, 9, 9, 9)};
+            surfaceStyle.normal.background = roundedMask;
             StyleScrollbars();
             statusLabel = new GUIStyle(small)
             {fontSize = 14, fontStyle = FontStyle.Bold, wordWrap = false};
@@ -717,9 +737,28 @@ namespace PigeonSandbox
 
         void Panel(Rect r, Color c)
         {
-            GUI.color = c;
+            Color previous = GUI.color;
+            GUI.color = new Color(c.r * previous.r, c.g * previous.g, c.b * previous.b, c.a * previous.a);
             GUI.DrawTexture(r, Texture2D.whiteTexture);
-            GUI.color = Color.white;
+            GUI.color = previous;
+        }
+
+        void Surface(Rect r, Color c)
+        {
+            Color previous = GUI.color;
+            GUI.color = new Color(.12f * previous.r, .16f * previous.g, .12f * previous.b, .12f * previous.a);
+            GUI.Box(new Rect(r.x, r.y + 3, r.width, Mathf.Max(0, r.height - 3)), GUIContent.none, surfaceStyle);
+            GUI.color = new Color(c.r * previous.r, c.g * previous.g, c.b * previous.b, c.a * previous.a);
+            GUI.Box(r, GUIContent.none, surfaceStyle);
+            GUI.color = previous;
+        }
+
+        void Disc(Rect r, Color c)
+        {
+            Color previous = GUI.color;
+            GUI.color = new Color(c.r * previous.r, c.g * previous.g, c.b * previous.b, c.a * previous.a);
+            GUI.DrawTexture(r, circleMask);
+            GUI.color = previous;
         }
 
         void Label(float x, float y, float w, float h, string value, GUIStyle style = null)
@@ -742,6 +781,11 @@ namespace PigeonSandbox
             return GUI.Button(r, value, enabled ? active ? primaryButton : button : disabledButton) && enabled;
         }
 
+        bool DangerButton(Rect r, string value)
+        {
+            return GUI.Button(r, value, dangerButton);
+        }
+
         bool CloseButton(Rect r)
         {
             return Button(r, "閉じる");
@@ -762,6 +806,7 @@ namespace PigeonSandbox
                     pixel.a *= Mathf.Clamp01(radius + .5f - Mathf.Sqrt(dx * dx + dy * dy));
                     texture.SetPixel(x, y, pixel);
                 }
+
             texture.Apply();
             return texture;
         }
@@ -1285,6 +1330,5 @@ namespace PigeonSandbox
             featherPortraits[index] = texture;
             return texture;
         }
-
     }
 }

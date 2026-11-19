@@ -65,7 +65,9 @@ namespace PigeonSandbox.Editor
                 var map = Read<Rect>(mapLayout, "center");
                 Check(map.width * map.height >= 1440f * 900f * .8f, "the town occupies at least eighty percent of a desktop window");
                 Check(!(bool)Call(app, "UiBlocksMap", new Vector2(720, 450), 1440f, 900f), "uncovered town remains interactive");
-                Check((bool)Call(app, "UiBlocksMap", new Vector2(720, 850), 1440f, 900f), "bottom toolbar blocks construction clicks");
+                Rect railAtDesktop = (Rect)Call(app, "CommandRailRect", 1440f, 900f);
+                Check((bool)Call(app, "UiBlocksMap", railAtDesktop.center, 1440f, 900f), "command rail blocks construction clicks");
+                Check(!(bool)Call(app, "UiBlocksMap", new Vector2(720, 850), 1440f, 900f), "uncovered lower town remains interactive");
                 Check((bool)Call(app, "UiBlocksMap", new Vector2(1380, 118), 1440f, 900f), "quick actions block town clicks");
                 foreach (FacilityKind kind in Enum.GetValues(typeof(FacilityKind)))
                     Check((bool)Call(app, "FacilityInCategory", kind, 0), "build catalog includes " + kind);
@@ -81,14 +83,13 @@ namespace PigeonSandbox.Editor
                 Check((bool)Call(app, "UiBlocksMap", new Vector2(720, 450), 1440f, 900f), "an open drawer blocks map construction");
                 Call(app, "CloseOverlay");
                 Check(!(bool)Call(app, "UiBlocksMap", new Vector2(720, 450), 1440f, 900f), "closing a drawer restores map interaction");
-                foreach (float width in new[] {1440f, 1600f, 1920f})
+                foreach (float width in new[]{1440f, 1600f, 1920f})
                 {
-                    Rect dock = (Rect)Call(app, "ToolDockRect", width, 900f);
+                    Rect rail = (Rect)Call(app, "CommandRailRect", width, 900f);
                     Rect actions = (Rect)Call(app, "QuickActionsRect", width, 900f);
-                    Rect menu = (Rect)Call(app, "MenuButtonRect", width, 900f);
-                    Check(dock.x >= 0 && dock.xMax <= width && actions.x >= 0 && actions.xMax <= width && menu.x >= 0 && menu.xMax <= width,
-                        "desktop controls stay inside a " + width + "px window");
+                    Check(rail.x >= 0 && rail.xMax <= width && rail.y >= 0 && rail.yMax <= 900f && actions.x >= 0 && actions.xMax <= width, "desktop controls stay inside a " + width + "px window");
                 }
+
                 Debug.Log("PIGEON STATUS PANEL VERIFICATION PASSED");
             }
             finally
